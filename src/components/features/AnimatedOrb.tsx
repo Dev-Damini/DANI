@@ -6,15 +6,17 @@ interface AnimatedOrbProps {
   isProcessing: boolean;
 }
 
+interface EnergyRibbon {
+  points: Array<{ x: number; y: number; vx: number; vy: number }>;
+  color: string;
+  alpha: number;
+  width: number;
+}
+
 export default function AnimatedOrb({ isListening, isSpeaking, isProcessing }: AnimatedOrbProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
-  const particlesRef = useRef<Array<{
-    angle: number;
-    radius: number;
-    speed: number;
-    size: number;
-  }>>([]);
+  const ribbonsRef = useRef<EnergyRibbon[]>([]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -23,177 +25,168 @@ export default function AnimatedOrb({ isListening, isSpeaking, isProcessing }: A
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Set canvas size
-    const size = 300;
+    // Set canvas size - smaller orb
+    const size = 240;
     canvas.width = size;
     canvas.height = size;
     const centerX = size / 2;
     const centerY = size / 2;
 
-    // Initialize particles
-    if (particlesRef.current.length === 0) {
-      for (let i = 0; i < 40; i++) {
-        particlesRef.current.push({
-          angle: (Math.PI * 2 * i) / 40,
-          radius: 60 + Math.random() * 20,
-          speed: 0.02 + Math.random() * 0.03,
-          size: 2 + Math.random() * 3
+    // Initialize energy ribbons
+    if (ribbonsRef.current.length === 0) {
+      const numRibbons = 5;
+      for (let i = 0; i < numRibbons; i++) {
+        const points = [];
+        const baseAngle = (Math.PI * 2 * i) / numRibbons;
+        for (let j = 0; j < 20; j++) {
+          const angle = baseAngle + (j / 20) * Math.PI * 2;
+          const radius = 50 + Math.random() * 20;
+          points.push({
+            x: centerX + Math.cos(angle) * radius,
+            y: centerY + Math.sin(angle) * radius,
+            vx: (Math.random() - 0.5) * 0.5,
+            vy: (Math.random() - 0.5) * 0.5
+          });
+        }
+        ribbonsRef.current.push({
+          points,
+          color: i % 2 === 0 ? '#ec4899' : '#f472b6',
+          alpha: 0.6 + Math.random() * 0.3,
+          width: 2 + Math.random() * 2
         });
       }
     }
 
     let frame = 0;
-    const baseRadius = 70;
+    const baseRadius = 55;
 
     const animate = () => {
-      ctx.clearRect(0, 0, size, size);
+      // Clear with black background for better contrast
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+      ctx.fillRect(0, 0, size, size);
       frame++;
 
       // Determine state
       const isActive = isListening || isSpeaking || isProcessing;
+      const intensity = isSpeaking ? 1.8 : isListening ? 1.3 : isProcessing ? 1.1 : 0.5;
       
-      // Draw outer glow rings
-      if (isActive) {
-        for (let i = 0; i < 3; i++) {
-          const pulseRadius = baseRadius + 30 + i * 25 + Math.sin(frame * 0.05 + i) * 10;
-          const gradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, pulseRadius);
-          
-          if (isListening) {
-            gradient.addColorStop(0, 'rgba(236, 72, 153, 0)');
-            gradient.addColorStop(0.7, `rgba(236, 72, 153, ${0.15 - i * 0.05})`);
-            gradient.addColorStop(1, 'rgba(236, 72, 153, 0)');
-          } else if (isSpeaking) {
-            gradient.addColorStop(0, 'rgba(168, 85, 247, 0)');
-            gradient.addColorStop(0.7, `rgba(168, 85, 247, ${0.15 - i * 0.05})`);
-            gradient.addColorStop(1, 'rgba(168, 85, 247, 0)');
-          } else {
-            gradient.addColorStop(0, 'rgba(147, 51, 234, 0)');
-            gradient.addColorStop(0.7, `rgba(147, 51, 234, ${0.1 - i * 0.03})`);
-            gradient.addColorStop(1, 'rgba(147, 51, 234, 0)');
-          }
-          
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(centerX, centerY, pulseRadius, 0, Math.PI * 2);
-          ctx.fill();
-        }
+      // Draw outer glow aura - pink focused
+      for (let i = 0; i < 4; i++) {
+        const glowRadius = baseRadius + 25 + i * 20 + Math.sin(frame * 0.04 + i) * 8;
+        const gradient = ctx.createRadialGradient(centerX, centerY, baseRadius, centerX, centerY, glowRadius);
+        
+        gradient.addColorStop(0, 'rgba(236, 72, 153, 0)');
+        gradient.addColorStop(0.5, `rgba(236, 72, 153, ${(0.12 - i * 0.03) * intensity})`);
+        gradient.addColorStop(0.8, `rgba(168, 85, 247, ${(0.08 - i * 0.02) * intensity})`);
+        gradient.addColorStop(1, 'rgba(236, 72, 153, 0)');
+        
+        ctx.fillStyle = gradient;
+        ctx.beginPath();
+        ctx.arc(centerX, centerY, glowRadius, 0, Math.PI * 2);
+        ctx.fill();
       }
 
-      // Draw dynamic particles for active states
+      // Update and draw energy ribbons
       if (isActive) {
-        particlesRef.current.forEach((particle) => {
-          particle.angle += particle.speed;
+        ribbonsRef.current.forEach((ribbon, ribbonIndex) => {
+          const movementSpeed = isSpeaking ? 0.8 : isListening ? 0.5 : 0.3;
           
-          const waveAmplitude = isSpeaking ? 20 : isListening ? 15 : 8;
-          const waveFrequency = isSpeaking ? 4 : 3;
-          const currentRadius = particle.radius + Math.sin(frame * 0.1 + particle.angle * waveFrequency) * waveAmplitude;
+          // Update ribbon points with fluid motion
+          ribbon.points.forEach((point, i) => {
+            const angle = Math.atan2(point.y - centerY, point.x - centerX);
+            const currentRadius = Math.sqrt(
+              Math.pow(point.x - centerX, 2) + Math.pow(point.y - centerY, 2)
+            );
+            
+            // Orbital movement with wave
+            const targetRadius = baseRadius + 8 + Math.sin(frame * 0.08 + i * 0.3 + ribbonIndex) * 15 * intensity;
+            const radiusDiff = targetRadius - currentRadius;
+            
+            point.vx = Math.cos(angle) * radiusDiff * 0.02;
+            point.vy = Math.sin(angle) * radiusDiff * 0.02;
+            
+            // Add tangential velocity for rotation
+            const tangentAngle = angle + Math.PI / 2;
+            point.vx += Math.cos(tangentAngle) * movementSpeed * 0.015;
+            point.vy += Math.sin(tangentAngle) * movementSpeed * 0.015;
+            
+            // Add noise
+            point.vx += (Math.random() - 0.5) * 0.2 * intensity;
+            point.vy += (Math.random() - 0.5) * 0.2 * intensity;
+            
+            // Apply velocity with damping
+            point.x += point.vx;
+            point.y += point.vy;
+            point.vx *= 0.95;
+            point.vy *= 0.95;
+          });
           
-          const x = centerX + Math.cos(particle.angle) * currentRadius;
-          const y = centerY + Math.sin(particle.angle) * currentRadius;
+          // Draw smooth ribbon with glow
+          ctx.save();
+          ctx.globalAlpha = ribbon.alpha * intensity;
+          ctx.strokeStyle = ribbon.color;
+          ctx.lineWidth = ribbon.width * intensity;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
           
-          const gradient = ctx.createRadialGradient(x, y, 0, x, y, particle.size);
+          // Add glow effect
+          ctx.shadowColor = ribbon.color;
+          ctx.shadowBlur = 15 * intensity;
           
-          if (isListening) {
-            gradient.addColorStop(0, 'rgba(236, 72, 153, 0.9)');
-            gradient.addColorStop(1, 'rgba(236, 72, 153, 0)');
-          } else if (isSpeaking) {
-            gradient.addColorStop(0, 'rgba(168, 85, 247, 0.9)');
-            gradient.addColorStop(1, 'rgba(168, 85, 247, 0)');
-          } else {
-            gradient.addColorStop(0, 'rgba(147, 51, 234, 0.7)');
-            gradient.addColorStop(1, 'rgba(147, 51, 234, 0)');
+          ctx.beginPath();
+          ctx.moveTo(ribbon.points[0].x, ribbon.points[0].y);
+          
+          // Draw smooth curves through points
+          for (let i = 1; i < ribbon.points.length - 2; i++) {
+            const xc = (ribbon.points[i].x + ribbon.points[i + 1].x) / 2;
+            const yc = (ribbon.points[i].y + ribbon.points[i + 1].y) / 2;
+            ctx.quadraticCurveTo(ribbon.points[i].x, ribbon.points[i].y, xc, yc);
           }
           
-          ctx.fillStyle = gradient;
-          ctx.beginPath();
-          ctx.arc(x, y, particle.size, 0, Math.PI * 2);
-          ctx.fill();
+          // Connect back to start for closed loop
+          const lastPoint = ribbon.points[ribbon.points.length - 1];
+          const firstPoint = ribbon.points[0];
+          ctx.quadraticCurveTo(lastPoint.x, lastPoint.y, firstPoint.x, firstPoint.y);
+          
+          ctx.stroke();
+          ctx.restore();
         });
       }
 
-      // Draw main orb with gradient
-      const mainGradient = ctx.createRadialGradient(
-        centerX - 20,
-        centerY - 20,
-        0,
-        centerX,
-        centerY,
-        baseRadius
-      );
-
-      if (isListening) {
-        mainGradient.addColorStop(0, '#fdf2f8');
-        mainGradient.addColorStop(0.3, '#fce7f3');
-        mainGradient.addColorStop(0.7, '#ec4899');
-        mainGradient.addColorStop(1, '#be185d');
-      } else if (isSpeaking) {
-        mainGradient.addColorStop(0, '#faf5ff');
-        mainGradient.addColorStop(0.3, '#f3e8ff');
-        mainGradient.addColorStop(0.7, '#a855f7');
-        mainGradient.addColorStop(1, '#7e22ce');
-      } else if (isProcessing) {
-        mainGradient.addColorStop(0, '#f5f3ff');
-        mainGradient.addColorStop(0.3, '#ede9fe');
-        mainGradient.addColorStop(0.7, '#9333ea');
-        mainGradient.addColorStop(1, '#6b21a8');
-      } else {
-        mainGradient.addColorStop(0, '#f9fafb');
-        mainGradient.addColorStop(0.5, '#e5e7eb');
-        mainGradient.addColorStop(1, '#9ca3af');
-      }
-
-      const orbRadius = isActive 
-        ? baseRadius + Math.sin(frame * 0.08) * (isSpeaking ? 8 : 5)
-        : baseRadius;
-
-      ctx.fillStyle = mainGradient;
-      ctx.shadowColor = isListening ? '#ec4899' : isSpeaking ? '#a855f7' : isProcessing ? '#9333ea' : '#6b7280';
-      ctx.shadowBlur = isActive ? 30 : 15;
+      // Draw central glow sphere with hollow center
+      const innerRadius = baseRadius * 0.4;
+      const outerRadius = baseRadius + (isActive ? Math.sin(frame * 0.1) * 5 : 0);
+      
+      // Outer glow
+      const glowGradient = ctx.createRadialGradient(centerX, centerY, innerRadius, centerX, centerY, outerRadius);
+      glowGradient.addColorStop(0, 'rgba(0, 0, 0, 0.8)');
+      glowGradient.addColorStop(0.3, `rgba(236, 72, 153, ${0.4 * intensity})`);
+      glowGradient.addColorStop(0.6, `rgba(244, 114, 182, ${0.6 * intensity})`);
+      glowGradient.addColorStop(0.85, `rgba(236, 72, 153, ${0.3 * intensity})`);
+      glowGradient.addColorStop(1, 'rgba(236, 72, 153, 0)');
+      
+      ctx.fillStyle = glowGradient;
       ctx.beginPath();
-      ctx.arc(centerX, centerY, orbRadius, 0, Math.PI * 2);
+      ctx.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.shadowBlur = 0;
-
-      // Draw waveform for speaking
+      
+      // Add shimmer highlights when speaking
       if (isSpeaking) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        
-        for (let i = 0; i < 360; i += 5) {
-          const angle = (i * Math.PI) / 180;
-          const waveOffset = Math.sin(frame * 0.2 + i * 0.1) * 15;
-          const radius = orbRadius - 25 + waveOffset;
-          const x = centerX + Math.cos(angle) * radius;
-          const y = centerY + Math.sin(angle) * radius;
+        for (let i = 0; i < 8; i++) {
+          const angle = (frame * 0.05 + i * Math.PI / 4);
+          const highlightRadius = baseRadius * 0.7;
+          const x = centerX + Math.cos(angle) * highlightRadius;
+          const y = centerY + Math.sin(angle) * highlightRadius;
           
-          if (i === 0) {
-            ctx.moveTo(x, y);
-          } else {
-            ctx.lineTo(x, y);
-          }
-        }
-        
-        ctx.closePath();
-        ctx.stroke();
-      }
-
-      // Draw energy ring for listening
-      if (isListening) {
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
-        ctx.lineWidth = 3;
-        
-        const ringRadius = orbRadius + 15;
-        const segments = 60;
-        const gapSize = 0.3;
-        
-        for (let i = 0; i < segments; i++) {
-          const startAngle = (i / segments) * Math.PI * 2 + frame * 0.05;
-          const endAngle = startAngle + (Math.PI * 2 / segments) - gapSize;
+          const highlightGradient = ctx.createRadialGradient(x, y, 0, x, y, 15);
+          highlightGradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
+          highlightGradient.addColorStop(0.5, 'rgba(244, 114, 182, 0.3)');
+          highlightGradient.addColorStop(1, 'rgba(236, 72, 153, 0)');
           
+          ctx.fillStyle = highlightGradient;
           ctx.beginPath();
-          ctx.arc(centerX, centerY, ringRadius, startAngle, endAngle);
-          ctx.stroke();
+          ctx.arc(x, y, 15, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
 
@@ -210,10 +203,11 @@ export default function AnimatedOrb({ isListening, isSpeaking, isProcessing }: A
   }, [isListening, isSpeaking, isProcessing]);
 
   return (
-    <div className="relative w-[300px] h-[300px] flex items-center justify-center">
+    <div className="relative w-[240px] h-[240px] flex items-center justify-center">
       <canvas
         ref={canvasRef}
         className="absolute inset-0"
+        style={{ background: '#000' }}
       />
     </div>
   );
