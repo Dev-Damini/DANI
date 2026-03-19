@@ -15,9 +15,8 @@ export default function AuthPage() {
   const [generatedId, setGeneratedId] = useState('');
 
   const generateUserId = () => {
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 8);
-    return `dani_${timestamp}_${random}`;
+    const randomNum = Math.floor(Math.random() * 9000000) + 1000000; // 7-digit number
+    return `#${randomNum}`;
   };
 
   const handleCreateAccount = async () => {
@@ -204,7 +203,7 @@ export default function AuthPage() {
                 value={userId}
                 onChange={(e) => setUserId(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="dani_1234567890_abc123"
+                placeholder="#1234567"
                 className="w-full px-4 py-3 glass rounded-2xl border-2 border-white/30 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 font-mono text-sm"
               />
             </div>
