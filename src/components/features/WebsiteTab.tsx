@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Code, Download, Sparkles, Globe, FileCode, Loader2, CheckCircle, AlertCircle } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Code, Download, Sparkles, Globe, FileCode, Loader2, CheckCircle, AlertCircle, Eye, Edit, Zap, Layers, Package } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import JSZip from 'jszip';
@@ -16,6 +16,9 @@ export default function WebsiteTab() {
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
   const [projectName, setProjectName] = useState('');
   const [error, setError] = useState('');
+  const [selectedFileIndex, setSelectedFileIndex] = useState(0);
+  const [viewMode, setViewMode] = useState<'editor' | 'preview'>('editor');
+  const [editedCode, setEditedCode] = useState('');
 
   const technologies = [
     { id: 'html', label: 'HTML', icon: FileCode },
@@ -113,25 +116,69 @@ export default function WebsiteTab() {
     }
   };
 
+  // Generate preview HTML
+  const previewHTML = useMemo(() => {
+    if (generatedFiles.length === 0) return '';
+    
+    const htmlFile = generatedFiles.find(f => f.path === 'index.html');
+    const cssFile = generatedFiles.find(f => f.path.endsWith('.css'));
+    const jsFile = generatedFiles.find(f => f.path.endsWith('.js'));
+    
+    if (!htmlFile) return '';
+    
+    let html = htmlFile.content;
+    
+    // Inject CSS inline
+    if (cssFile) {
+      html = html.replace('</head>', `<style>${cssFile.content}</style></head>`);
+    }
+    
+    // Inject JS inline
+    if (jsFile) {
+      html = html.replace('</body>', `<script>${jsFile.content}</script></body>`);
+    }
+    
+    return html;
+  }, [generatedFiles]);
+
+  const features = [
+    { icon: Zap, title: 'VIBE CODER', desc: 'Generate full websites from prompts' },
+    { icon: Globe, title: 'AI WEBSITE BUILDER', desc: 'Create modern websites instantly' },
+    { icon: Code, title: 'SMART CODE GENERATOR', desc: 'HTML, CSS, JavaScript & TypeScript' },
+    { icon: Layers, title: 'UI DESIGN CREATOR', desc: 'Beautiful layouts automatically' },
+    { icon: Package, title: 'PROJECT EXPORT', desc: 'Download ready-to-use projects' }
+  ];
+
   return (
-    <div className="flex-1 flex items-start justify-center p-4 overflow-y-auto">
-      <div className="w-full max-w-4xl">
-        <div className="glass rounded-3xl p-8 border-2 border-white/30 mb-6">
-          {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-20 h-20 bg-gradient-to-br from-pink-400 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Globe className="w-10 h-10 text-white" />
-            </div>
-            <h2 className="text-3xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
+    <div className="flex-1 flex flex-col p-4 overflow-hidden">
+      <div className="w-full max-w-7xl mx-auto flex-1 flex flex-col">
+        {/* Feature Showcase */}
+        <div className="glass rounded-3xl p-6 border-2 border-white/30 mb-4">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+            {features.map((feature, idx) => (
+              <div key={idx} className="text-center transform hover:scale-105 transition-all">
+                <div className="w-12 h-12 bg-gradient-to-br from-pink-400 to-purple-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                  <feature.icon className="w-6 h-6 text-white" />
+                </div>
+                <p className="text-xs font-bold text-gray-700 mb-1">{feature.title}</p>
+                <p className="text-[10px] text-gray-500">{feature.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Input Section */}
+        <div className="glass rounded-3xl p-6 border-2 border-white/30 mb-4">
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold mb-1 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
               Website Creator
             </h2>
-            <p className="text-gray-600">
+            <p className="text-sm text-gray-600">
               Describe your dream website and I'll create it for you! 💕
             </p>
           </div>
 
-          {/* Website Description Input */}
-          <div className="mb-6">
+          <div className="mb-4">
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               What kind of website do you want? ✨
             </label>
@@ -140,111 +187,168 @@ export default function WebsiteTab() {
               onChange={(e) => setDescription(e.target.value)}
               onKeyPress={handleKeyPress}
               placeholder="E.g., A modern portfolio website with a hero section, about me page, projects gallery, and contact form. Make it pink and purple themed with smooth animations..."
-              className="w-full h-32 px-4 py-3 glass rounded-2xl border-2 border-white/30 focus:border-pink-400 focus:outline-none resize-none text-gray-800 placeholder-gray-400"
+              className="w-full h-24 px-4 py-3 glass rounded-2xl border-2 border-white/30 focus:border-pink-400 focus:outline-none resize-none text-sm text-gray-800 placeholder-gray-400"
             />
-            <p className="text-xs text-gray-500 mt-2">
-              Tip: Press Ctrl+Enter to generate
-            </p>
           </div>
 
-          {/* Technology Selection */}
-          <div className="mb-6">
-            <label className="block text-sm font-semibold text-gray-700 mb-3">
+          <div className="mb-4">
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
               Select Technologies 🛠️
             </label>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
               {technologies.map(tech => (
                 <button
                   key={tech.id}
                   onClick={() => toggleTech(tech.id)}
-                  className={`p-4 rounded-2xl border-2 transition-all transform hover:scale-105 ${
+                  className={`p-3 rounded-2xl border-2 transition-all transform hover:scale-105 ${
                     techStack.includes(tech.id)
                       ? 'bg-gradient-to-r from-pink-500 to-purple-600 border-pink-400 text-white shadow-lg'
                       : 'glass border-white/30 text-gray-700 hover:border-pink-300'
                   }`}
                 >
-                  <tech.icon className="w-6 h-6 mx-auto mb-2" />
-                  <p className="text-sm font-medium">{tech.label}</p>
+                  <tech.icon className="w-5 h-5 mx-auto mb-1" />
+                  <p className="text-xs font-medium">{tech.label}</p>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Error Message */}
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border-2 border-red-200 rounded-2xl flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700">{error}</p>
+            <div className="mb-4 p-3 bg-red-50 border-2 border-red-200 rounded-2xl flex items-start gap-2">
+              <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-red-700">{error}</p>
             </div>
           )}
 
-          {/* Generate Button */}
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating || !description.trim() || techStack.length === 0}
-            className="w-full px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold text-lg hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-3"
-          >
-            {isGenerating ? (
-              <>
-                <Loader2 className="w-6 h-6 animate-spin" />
-                Creating Your Website...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-6 h-6" />
-                Generate Website
-              </>
-            )}
-          </button>
-
-          {/* Coming Soon Notice */}
-          <div className="mt-4 p-3 glass rounded-2xl border border-purple-300 text-center">
-            <p className="text-sm font-medium text-purple-700">
-              🚀 Coming Soon: DANI will host your website and send you a live link!
-            </p>
+          <div className="flex gap-3">
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating || !description.trim() || techStack.length === 0}
+              className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
+            >
+              {isGenerating ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-5 h-5" />
+                  Generate
+                </>
+              )}
+            </button>
+            <div className="glass rounded-2xl px-4 py-3 border border-purple-300 text-center">
+              <p className="text-xs font-medium text-purple-700">
+                🚀 Hosting Coming Soon!
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Generated Files Display */}
+        {/* Code Editor & Preview */}
         {generatedFiles.length > 0 && (
-          <div className="glass rounded-3xl p-8 border-2 border-white/30 animate-fade-in">
-            <div className="flex items-center justify-between mb-6">
+          <div className="glass rounded-3xl border-2 border-white/30 flex-1 flex flex-col animate-fade-in overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-white/20">
               <div className="flex items-center gap-3">
-                <CheckCircle className="w-8 h-8 text-green-500" />
+                <CheckCircle className="w-6 h-6 text-green-500" />
                 <div>
-                  <h3 className="text-2xl font-bold text-gray-800">
+                  <h3 className="text-xl font-bold text-gray-800">
                     Website Created! 🎉
                   </h3>
-                  <p className="text-sm text-gray-600">
-                    {generatedFiles.length} files generated
+                  <p className="text-xs text-gray-600">
+                    {generatedFiles.length} files
                   </p>
                 </div>
               </div>
-              <button
-                onClick={handleDownloadZip}
-                className="px-6 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-2xl font-semibold hover:from-green-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center gap-2"
-              >
-                <Download className="w-5 h-5" />
-                Download ZIP
-              </button>
+              <div className="flex gap-2">
+                <div className="bg-white/60 rounded-full p-1 flex gap-1">
+                  <button
+                    onClick={() => setViewMode('editor')}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                      viewMode === 'editor'
+                        ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    <Edit className="w-4 h-4 inline mr-1" />
+                    Editor
+                  </button>
+                  <button
+                    onClick={() => setViewMode('preview')}
+                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                      viewMode === 'preview'
+                        ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
+                        : 'text-gray-600 hover:text-gray-800'
+                    }`}
+                  >
+                    <Eye className="w-4 h-4 inline mr-1" />
+                    Preview
+                  </button>
+                </div>
+                <button
+                  onClick={handleDownloadZip}
+                  className="px-4 py-2 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-full font-semibold hover:from-green-600 hover:to-emerald-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 flex items-center gap-2"
+                >
+                  <Download className="w-4 h-4" />
+                  <span className="hidden md:inline">Download</span>
+                </button>
+              </div>
             </div>
 
-            {/* File List */}
-            <div className="space-y-3 max-h-96 overflow-y-auto">
-              {generatedFiles.map((file, index) => (
-                <div
-                  key={index}
-                  className="bg-white/60 rounded-2xl p-4 border border-pink-200"
-                >
-                  <div className="flex items-center gap-2 mb-2">
-                    <FileCode className="w-5 h-5 text-purple-600" />
-                    <p className="font-semibold text-gray-800">{file.path}</p>
+            {/* Content Area */}
+            <div className="flex-1 flex overflow-hidden">
+              {viewMode === 'editor' ? (
+                <>
+                  {/* File Tabs */}
+                  <div className="w-48 border-r border-white/20 overflow-y-auto bg-white/30">
+                    {generatedFiles.map((file, index) => (
+                      <button
+                        key={index}
+                        onClick={() => {
+                          setSelectedFileIndex(index);
+                          setEditedCode(file.content);
+                        }}
+                        className={`w-full px-4 py-3 text-left text-sm border-b border-white/20 transition-all ${
+                          selectedFileIndex === index
+                            ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white font-semibold'
+                            : 'text-gray-700 hover:bg-white/40'
+                        }`}
+                      >
+                        <FileCode className="w-4 h-4 inline mr-2" />
+                        {file.path}
+                      </button>
+                    ))}
                   </div>
-                  <pre className="text-xs bg-gray-900 text-green-400 p-3 rounded-lg overflow-x-auto max-h-40">
-                    <code>{file.content}</code>
-                  </pre>
+
+                  {/* Code Editor */}
+                  <div className="flex-1 flex flex-col">
+                    <div className="bg-gray-900 px-4 py-2 border-b border-gray-700 flex items-center justify-between">
+                      <p className="text-xs text-gray-400 font-mono">
+                        {generatedFiles[selectedFileIndex]?.path}
+                      </p>
+                      <Code className="w-4 h-4 text-gray-500" />
+                    </div>
+                    <textarea
+                      value={editedCode || generatedFiles[selectedFileIndex]?.content || ''}
+                      onChange={(e) => setEditedCode(e.target.value)}
+                      className="flex-1 bg-gray-900 text-green-400 font-mono text-xs p-4 resize-none focus:outline-none"
+                      spellCheck={false}
+                    />
+                  </div>
+                </>
+              ) : (
+                /* Live Preview */
+                <div className="flex-1 bg-white">
+                  <iframe
+                    srcDoc={previewHTML}
+                    className="w-full h-full border-0"
+                    title="Website Preview"
+                    sandbox="allow-scripts"
+                  />
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
