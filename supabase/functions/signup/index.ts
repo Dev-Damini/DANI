@@ -20,11 +20,11 @@ serve(async (req) => {
       );
     }
 
-    // Generate unique ID
-    const randomNum = Math.floor(Math.random() * 9000000) + 1000000;
-    const userId = `#${randomNum}`;
-    const email = `${userId}@dani.app`;
-    console.log('Generated user ID:', userId);
+    // Generate unique email
+    const timestamp = Date.now();
+    const random = Math.random().toString(36).substring(2, 15);
+    const email = `dani_${timestamp}_${random}@dani.app`;
+    console.log('Generated email:', email);
 
     // Create admin client
     const supabaseAdmin = createClient(
@@ -38,10 +38,6 @@ serve(async (req) => {
       email,
       password,
       email_confirm: true, // Auto-confirm - no email sent
-      user_metadata: {
-        username: userId,
-        display_id: userId
-      },
       app_metadata: {
         provider: 'email',
         providers: ['email']
@@ -95,7 +91,6 @@ serve(async (req) => {
       console.log('Signup completed successfully');
       return new Response(
         JSON.stringify({
-          userId,
           session: sessionData.session,
           user: sessionData.user
         }),
@@ -103,11 +98,31 @@ serve(async (req) => {
       );
     }
 
-    console.log('Signup completed successfully with token');
+    console.log('Signup completed successfully, signing in user...');
+    
+    // Sign in the user to get a session
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+
+    const { data: sessionData, error: signInError } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password
+    });
+
+    if (signInError) {
+      console.error('Auto sign-in error:', signInError);
+      return new Response(
+        JSON.stringify({ error: 'Account created but auto-login failed. Please refresh the page.' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     return new Response(
       JSON.stringify({
-        userId,
-        user: userData.user
+        session: sessionData.session,
+        user: sessionData.user
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

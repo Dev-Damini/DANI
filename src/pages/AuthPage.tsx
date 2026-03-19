@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Lock, Sparkles, LogIn, UserPlus } from 'lucide-react';
+import { Lock, Sparkles, X, FileText } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import daniLogo from '@/assets/dani-logo.png';
 
@@ -8,16 +8,12 @@ export default function AuthPage() {
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const [userId, setUserId] = useState('');
-  const [isLogin, setIsLogin] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [generatedId, setGeneratedId] = useState('');
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [showTerms, setShowTerms] = useState(false);
 
-  const generateUserId = () => {
-    const randomNum = Math.floor(Math.random() * 9000000) + 1000000; // 7-digit number
-    return `#${randomNum}`;
-  };
+
 
   const handleCreateAccount = async () => {
     if (!password || password.length < 6) {
@@ -30,13 +26,18 @@ export default function AuthPage() {
       return;
     }
 
+    if (!termsAccepted) {
+      setError('Please accept the Terms of Service to continue');
+      return;
+    }
+
     setIsLoading(true);
     setError('');
 
     try {
       console.log('Creating account...');
 
-      // Create account via Edge Function (no email confirmation needed)
+      // Create account via Edge Function
       const { data, error } = await supabase.functions.invoke('signup', {
         body: { password }
       });
@@ -45,139 +46,34 @@ export default function AuthPage() {
 
       if (error) {
         console.error('Signup function error:', error);
-        // Check if it's a FunctionsHttpError
-        if (error.message && error.message.includes('FunctionsHttpError')) {
-          // Try to parse the actual error from context
-          setError('Unable to create account. Please try again.');
-        } else {
-          let errorMessage = error.message;
-          // Try to extract error from message if it's JSON
-          try {
-            const errorData = JSON.parse(error.message);
-            errorMessage = errorData.error || error.message;
-          } catch {
-            // Not JSON, check if it contains "error sending confirmation email"
-            if (errorMessage.toLowerCase().includes('email')) {
-              // Ignore email errors and try to proceed
-              console.log('Ignoring email error, checking if user was created...');
-              // Wait a bit and try to log in
-              setTimeout(async () => {
-                await handleLogin();
-              }, 1000);
-              return;
-            }
-          }
-          setError(errorMessage);
-        }
+        setError('Unable to create account. Please try again.');
         setIsLoading(false);
         return;
       }
 
-      if (data && data.userId) {
-        console.log('Account created successfully with ID:', data.userId);
-        
-        // Show generated ID to user
-        setGeneratedId(data.userId);
-        
-        // If we have a session, user is logged in
-        if (data.session) {
-          // Navigate after showing ID for 3 seconds
-          setTimeout(() => {
-            navigate('/chat');
-          }, 3000);
-        } else {
-          // No session, need to log in manually
-          console.log('No session returned, attempting login...');
-          setTimeout(async () => {
-            setUserId(data.userId);
-            await handleLogin();
-          }, 3000);
-        }
+      if (data && data.session) {
+        console.log('Account created successfully, logging in...');
+        navigate('/chat');
+      } else {
+        setError('Account created but unable to log in automatically. Please refresh the page.');
       }
     } catch (error: any) {
       console.error('Signup error:', error);
-      // Check if error message contains email-related issues
-      if (error.message && error.message.toLowerCase().includes('email')) {
-        // Show the ID anyway and let user try to login
-        setError('Account may have been created. Please try logging in with the ID shown above.');
-      } else {
-        setError(error.message || 'Failed to create account');
-      }
+      setError(error.message || 'Failed to create account');
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleLogin = async () => {
-    if (!userId || !password) {
-      setError('Please enter your ID and password');
-      return;
-    }
 
-    setIsLoading(true);
-    setError('');
-
-    try {
-      const email = `${userId}@dani.app`;
-
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (error) throw error;
-
-      if (data.user) {
-        navigate('/chat');
-      }
-    } catch (error: any) {
-      console.error('Login error:', error);
-      setError('Invalid ID or password');
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      if (isLogin) {
-        handleLogin();
-      } else {
-        handleCreateAccount();
-      }
+      handleCreateAccount();
     }
   };
 
-  if (generatedId) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex items-center justify-center p-4">
-        <div className="glass rounded-3xl p-12 border-2 border-white/30 max-w-md w-full text-center animate-fade-in">
-          <div className="w-20 h-20 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full flex items-center justify-center mx-auto mb-6">
-            <Sparkles className="w-10 h-10 text-white" />
-          </div>
-          
-          <h2 className="text-3xl font-bold mb-4 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-            Account Created! 🎉
-          </h2>
-          
-          <p className="text-gray-700 mb-6">
-            Save your ID to log in next time:
-          </p>
-          
-          <div className="bg-white/60 rounded-2xl p-4 border-2 border-pink-300 mb-6">
-            <p className="text-xs text-gray-500 mb-1">Your ID:</p>
-            <p className="text-lg font-mono font-bold text-gray-800 break-all">
-              {generatedId}
-            </p>
-          </div>
-          
-          <p className="text-sm text-gray-600">
-            Redirecting you to DANI...
-          </p>
-        </div>
-      </div>
-    );
-  }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex items-center justify-center p-4">
@@ -186,66 +82,15 @@ export default function AuthPage() {
         <div className="text-center mb-8">
           <img src={daniLogo} alt="DANI" className="h-16 mx-auto mb-4" />
           <h1 className="text-3xl font-bold mb-2 bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-            {isLogin ? 'Welcome Back!' : 'Get Started'}
+            Get Started
           </h1>
           <p className="text-gray-600">
-            {isLogin ? 'Log in with your ID and password' : 'Create your account with just a password'}
+            Create your account in seconds
           </p>
-        </div>
-
-        {/* Toggle */}
-        <div className="flex gap-2 bg-white/60 p-1.5 rounded-full mb-6">
-          <button
-            onClick={() => {
-              setIsLogin(false);
-              setError('');
-              setUserId('');
-            }}
-            className={`flex-1 px-4 py-2 rounded-full font-medium transition-all ${
-              !isLogin
-                ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            <UserPlus className="w-4 h-4 inline mr-1" />
-            Sign Up
-          </button>
-          <button
-            onClick={() => {
-              setIsLogin(true);
-              setError('');
-              setPassword('');
-              setConfirmPassword('');
-            }}
-            className={`flex-1 px-4 py-2 rounded-full font-medium transition-all ${
-              isLogin
-                ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
-                : 'text-gray-600 hover:text-gray-800'
-            }`}
-          >
-            <LogIn className="w-4 h-4 inline mr-1" />
-            Log In
-          </button>
         </div>
 
         {/* Form */}
         <div className="space-y-4">
-          {isLogin && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Your ID
-              </label>
-              <input
-                type="text"
-                value={userId}
-                onChange={(e) => setUserId(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="#1234567"
-                className="w-full px-4 py-3 glass rounded-2xl border-2 border-white/30 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 font-mono text-sm"
-              />
-            </div>
-          )}
-
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">
               Password
@@ -263,24 +108,43 @@ export default function AuthPage() {
             </div>
           </div>
 
-          {!isLogin && (
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">
-                Confirm Password
-              </label>
-              <div className="relative">
-                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
-                <input
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Confirm your password"
-                  className="w-full pl-12 pr-4 py-3 glass rounded-2xl border-2 border-white/30 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400"
-                />
-              </div>
+          <div>
+            <label className="block text-sm font-semibold text-gray-700 mb-2">
+              Confirm Password
+            </label>
+            <div className="relative">
+              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+              <input
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                onKeyPress={handleKeyPress}
+                placeholder="Confirm your password"
+                className="w-full pl-12 pr-4 py-3 glass rounded-2xl border-2 border-white/30 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400"
+              />
             </div>
-          )}
+          </div>
+
+          {/* Terms of Service */}
+          <div className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              id="terms"
+              checked={termsAccepted}
+              onChange={(e) => setTermsAccepted(e.target.checked)}
+              className="mt-1 w-4 h-4 accent-pink-500 cursor-pointer"
+            />
+            <label htmlFor="terms" className="text-sm text-gray-700 cursor-pointer">
+              I agree to the{' '}
+              <button
+                type="button"
+                onClick={() => setShowTerms(true)}
+                className="text-pink-600 font-semibold hover:text-pink-700 underline"
+              >
+                Terms of Service
+              </button>
+            </label>
+          </div>
 
           {error && (
             <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-3">
@@ -288,28 +152,20 @@ export default function AuthPage() {
             </div>
           )}
 
-          {!isLogin && (
-            <div className="bg-purple-50 border-2 border-purple-200 rounded-2xl p-3">
-              <p className="text-xs text-purple-700">
-                💡 A unique ID will be generated for you. Save it to log in later!
-              </p>
-            </div>
-          )}
-
           <button
-            onClick={isLogin ? handleLogin : handleCreateAccount}
+            onClick={handleCreateAccount}
             disabled={isLoading}
             className="w-full px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg hover:shadow-xl transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none flex items-center justify-center gap-2"
           >
             {isLoading ? (
               <>
                 <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                {isLogin ? 'Logging in...' : 'Creating...'}
+                Creating...
               </>
             ) : (
               <>
                 <Sparkles className="w-5 h-5" />
-                {isLogin ? 'Log In' : 'Create Account'}
+                Create Account
               </>
             )}
           </button>
@@ -324,6 +180,89 @@ export default function AuthPage() {
           </p>
         </div>
       </div>
+
+      {/* Terms of Service Modal */}
+      {showTerms && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="glass rounded-3xl p-8 border-2 border-white/30 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-2">
+                <FileText className="w-6 h-6 text-pink-600" />
+                Terms of Service
+              </h2>
+              <button
+                onClick={() => setShowTerms(false)}
+                className="p-2 hover:bg-white/60 rounded-full transition-all"
+              >
+                <X className="w-5 h-5 text-gray-600" />
+              </button>
+            </div>
+            
+            <div className="prose prose-sm max-w-none text-gray-700 space-y-4">
+              <p className="text-sm">
+                <strong>Last Updated:</strong> March 19, 2026
+              </p>
+              
+              <h3 className="text-lg font-bold text-gray-800 mt-6">1. Acceptance of Terms</h3>
+              <p>
+                By using DANI, you agree to these Terms of Service. If you do not agree, please do not use our service.
+              </p>
+              
+              <h3 className="text-lg font-bold text-gray-800 mt-6">2. Description of Service</h3>
+              <p>
+                DANI is an AI assistant providing chat, image generation, voice interaction, and website creation features. We strive to provide accurate and helpful responses, but results may vary.
+              </p>
+              
+              <h3 className="text-lg font-bold text-gray-800 mt-6">3. User Responsibilities</h3>
+              <ul className="list-disc pl-6 space-y-2">
+                <li>You must be at least 13 years old to use DANI</li>
+                <li>Keep your password secure and confidential</li>
+                <li>Do not use DANI for illegal or harmful purposes</li>
+                <li>Do not attempt to abuse, hack, or disrupt our service</li>
+                <li>Respect intellectual property rights in generated content</li>
+              </ul>
+              
+              <h3 className="text-lg font-bold text-gray-800 mt-6">4. Content and Privacy</h3>
+              <p>
+                Generated images, websites, and conversations are processed through our AI systems. We do not claim ownership of your content, but we may process it to provide our services. Please do not share sensitive personal information.
+              </p>
+              
+              <h3 className="text-lg font-bold text-gray-800 mt-6">5. Limitations of Liability</h3>
+              <p>
+                DANI is provided "as is" without warranties. We are not liable for any damages resulting from use of our service, including but not limited to AI-generated content errors or service interruptions.
+              </p>
+              
+              <h3 className="text-lg font-bold text-gray-800 mt-6">6. Changes to Terms</h3>
+              <p>
+                We may update these terms at any time. Continued use of DANI after changes constitutes acceptance of new terms.
+              </p>
+              
+              <h3 className="text-lg font-bold text-gray-800 mt-6">7. Contact</h3>
+              <p>
+                For questions or concerns, please contact: <strong>contact@damicodesphere.com</strong>
+              </p>
+            </div>
+            
+            <div className="mt-8 flex gap-3">
+              <button
+                onClick={() => {
+                  setTermsAccepted(true);
+                  setShowTerms(false);
+                }}
+                className="flex-1 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg"
+              >
+                Accept Terms
+              </button>
+              <button
+                onClick={() => setShowTerms(false)}
+                className="px-6 py-3 glass rounded-2xl font-medium text-gray-700 hover:bg-white/60 transition-all"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
