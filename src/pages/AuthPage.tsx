@@ -1,11 +1,11 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, User, Sparkles, X, FileText, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, User, Sparkles, X, FileText, Eye, EyeOff, ArrowLeft, CheckCircle } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import daniLogo from '@/assets/dani-logo.png';
 
-type Mode = 'login' | 'signup';
+type Mode = 'login' | 'signup' | 'forgot';
 
 export default function AuthPage() {
   const navigate = useNavigate();
@@ -17,73 +17,65 @@ export default function AuthPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
   const [showTerms, setShowTerms] = useState(false);
+  // Forgot password
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotError, setForgotError] = useState('');
+  const [forgotSent, setForgotSent] = useState(false);
 
   const resetForm = () => {
-    setEmail('');
-    setUsername('');
-    setPassword('');
-    setError('');
-    setShowPassword(false);
+    setEmail(''); setUsername(''); setPassword(''); setError(''); setShowPassword(false);
+    setForgotEmail(''); setForgotError(''); setForgotSent(false);
   };
 
-  const switchMode = (m: Mode) => {
-    setMode(m);
-    resetForm();
-  };
+  const switchMode = (m: Mode) => { setMode(m); resetForm(); };
 
   // ─── Login ────────────────────────────────────────────────────────────────
   const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      setError('Please fill in all fields');
-      return;
-    }
-
-    setIsLoading(true);
-    setError('');
-
+    if (!email.trim() || !password) { setError('Please fill in all fields'); return; }
+    setIsLoading(true); setError('');
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+      let { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+
+      // Auto-fix: if email not confirmed, confirm silently and retry
+      if (error && error.message.toLowerCase().includes('email not confirmed')) {
+        console.log('Email not confirmed — auto-confirming...');
+        await supabase.functions.invoke('signup', { body: { email: email.trim(), confirmOnly: true } });
+        await new Promise(r => setTimeout(r, 400));
+        const retry = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        data = retry.data; error = retry.error;
+      }
 
       if (error) {
-        setError(error.message === 'Invalid login credentials'
-          ? 'Incorrect email or password'
-          : error.message);
-        setIsLoading(false);
-        return;
+        setError(error.message === 'Invalid login credentials' ? 'Incorrect email or password' : error.message);
+        setIsLoading(false); return;
       }
-
-      if (data.session) {
-        navigate('/chat');
-      }
+      if (data.session) navigate('/chat');
     } catch (err: any) {
-      setError(err.message || 'Login failed');
-      setIsLoading(false);
+      setError(err.message || 'Login failed'); setIsLoading(false);
     }
+  };
+
+  // ─── Forgot Password ──────────────────────────────────────────────────────
+  const handleForgotPassword = async () => {
+    if (!forgotEmail.trim()) { setForgotError('Please enter your email'); return; }
+    setForgotLoading(true); setForgotError('');
+    const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim(), {
+      redirectTo: window.location.origin + '/reset-password',
+    });
+    setForgotLoading(false);
+    if (error) { setForgotError(error.message); return; }
+    setForgotSent(true);
   };
 
   // ─── Signup ───────────────────────────────────────────────────────────────
   const handleSignup = async () => {
-    if (!email.trim() || !username.trim() || !password) {
-      setError('Please fill in all fields');
-      return;
-    }
-    if (username.trim().length < 2) {
-      setError('Username must be at least 2 characters');
-      return;
-    }
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email.trim())) {
-      setError('Please enter a valid email address');
-      return;
-    }
+    if (!email.trim() || !username.trim() || !password) { setError('Please fill in all fields'); return; }
+    if (username.trim().length < 2) { setError('Username must be at least 2 characters'); return; }
+    if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError('Please enter a valid email address'); return; }
 
-    setIsLoading(true);
-    setError('');
-
+    setIsLoading(true); setError('');
     try {
       const { data, error } = await supabase.functions.invoke('signup', {
         body: { email: email.trim(), username: username.trim(), password }
@@ -92,17 +84,9 @@ export default function AuthPage() {
       if (error) {
         let msg = error.message;
         if (error instanceof FunctionsHttpError) {
-          try {
-            const text = await error.context?.text();
-            if (text) {
-              const parsed = JSON.parse(text);
-              msg = parsed.error || msg;
-            }
-          } catch { /* ignore */ }
+          try { const text = await error.context?.text(); if (text) { const p = JSON.parse(text); msg = p.error || msg; } } catch { /* ignore */ }
         }
-        setError(msg);
-        setIsLoading(false);
-        return;
+        setError(msg); setIsLoading(false); return;
       }
 
       if (data?.session) {
@@ -110,29 +94,21 @@ export default function AuthPage() {
           access_token: data.session.access_token,
           refresh_token: data.session.refresh_token,
         });
-        if (sessionError) {
-          setError('Account created! Please log in.');
-          setIsLoading(false);
-          switchMode('login');
-          return;
-        }
+        if (sessionError) { setError('Account created! Please log in.'); setIsLoading(false); switchMode('login'); return; }
         navigate('/chat');
       } else {
-        setError('Account created! Please log in.');
-        setIsLoading(false);
-        switchMode('login');
+        setError('Account created! Please log in.'); setIsLoading(false); switchMode('login');
       }
     } catch (err: any) {
-      setError(err.message || 'Signup failed');
-      setIsLoading(false);
+      setError(err.message || 'Signup failed'); setIsLoading(false);
     }
   };
 
-  const handleSubmit = () => mode === 'login' ? handleLogin() : handleSignup();
+  const handleSubmit = () => mode === 'login' ? handleLogin() : mode === 'signup' ? handleSignup() : handleForgotPassword();
+  const handleKeyPress = (e: React.KeyboardEvent) => { if (e.key === 'Enter') handleSubmit(); };
 
-  const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleSubmit();
-  };
+  const cardTitle = mode === 'login' ? 'Welcome back 💕' : mode === 'signup' ? 'Join DANI' : 'Reset Password';
+  const cardSub = mode === 'login' ? 'Log in to continue your conversations' : mode === 'signup' ? 'Create your account to get started' : 'We\'ll send a reset link to your email';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex items-center justify-center p-4">
@@ -142,132 +118,162 @@ export default function AuthPage() {
         <div className="text-center mb-7">
           <img src={daniLogo} alt="DANI" className="h-14 mx-auto mb-3" />
           <h1 className="text-2xl font-bold bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent">
-            {mode === 'login' ? 'Welcome back 💕' : 'Join DANI'}
+            {cardTitle}
           </h1>
-          <p className="text-sm text-gray-500 mt-1">
-            {mode === 'login' ? 'Log in to continue your conversations' : 'Create your account to get started'}
-          </p>
+          <p className="text-sm text-gray-500 mt-1">{cardSub}</p>
         </div>
 
-        {/* Mode Toggle */}
-        <div className="flex bg-white/50 rounded-2xl p-1 mb-6 border border-white/40">
-          <button
-            onClick={() => switchMode('login')}
-            className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${
-              mode === 'login'
-                ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Log In
-          </button>
-          <button
-            onClick={() => switchMode('signup')}
-            className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${
-              mode === 'signup'
-                ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
-                : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Sign Up
-          </button>
-        </div>
-
-        {/* Form */}
-        <div className="space-y-4">
-          {/* Email */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
-            <div className="relative">
-              <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="email"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder="you@example.com"
-                className="w-full pl-11 pr-4 py-3 glass rounded-2xl border border-white/40 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
-              />
-            </div>
+        {/* Mode Toggle (only for login/signup) */}
+        {mode !== 'forgot' && (
+          <div className="flex bg-white/50 rounded-2xl p-1 mb-6 border border-white/40">
+            <button
+              onClick={() => switchMode('login')}
+              className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${mode === 'login' ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+            >Log In</button>
+            <button
+              onClick={() => switchMode('signup')}
+              className={`flex-1 py-2.5 rounded-xl font-semibold text-sm transition-all ${mode === 'signup' ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-700'}`}
+            >Sign Up</button>
           </div>
+        )}
 
-          {/* Username (signup only) */}
-          {mode === 'signup' && (
+        {/* ── Forgot Password form ── */}
+        {mode === 'forgot' && (
+          <div className="space-y-4">
+            {forgotSent ? (
+              <div className="text-center py-6 space-y-4">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto">
+                  <CheckCircle className="w-8 h-8 text-green-500" />
+                </div>
+                <p className="text-gray-700 font-semibold">Reset email sent! 💕</p>
+                <p className="text-sm text-gray-500">Check your inbox and click the link to reset your password.</p>
+                <button onClick={() => switchMode('login')} className="text-pink-600 font-semibold text-sm hover:underline">
+                  Back to Login
+                </button>
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 mb-1.5">Your Email</label>
+                  <div className="relative">
+                    <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="email"
+                      value={forgotEmail}
+                      onChange={e => setForgotEmail(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && handleForgotPassword()}
+                      placeholder="you@example.com"
+                      className="w-full pl-11 pr-4 py-3 glass rounded-2xl border border-white/40 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
+                    />
+                  </div>
+                </div>
+                {forgotError && (
+                  <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+                    <p className="text-sm text-red-600">{forgotError}</p>
+                  </div>
+                )}
+                <button
+                  onClick={handleForgotPassword}
+                  disabled={forgotLoading}
+                  className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {forgotLoading
+                    ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending...</>
+                    : <><Sparkles className="w-5 h-5" /> Send Reset Link</>}
+                </button>
+                <button onClick={() => switchMode('login')} className="w-full flex items-center justify-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors py-2">
+                  <ArrowLeft className="w-3.5 h-3.5" /> Back to Login
+                </button>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* ── Login / Signup form ── */}
+        {mode !== 'forgot' && (
+          <div className="space-y-4">
+            {/* Email */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Username</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
               <div className="relative">
-                <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
                 <input
-                  type="text"
-                  value={username}
-                  onChange={e => setUsername(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  placeholder="Your display name"
+                  type="email" value={email} onChange={e => setEmail(e.target.value)} onKeyPress={handleKeyPress}
+                  placeholder="you@example.com"
                   className="w-full pl-11 pr-4 py-3 glass rounded-2xl border border-white/40 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
                 />
               </div>
             </div>
-          )}
 
-          {/* Password */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                onKeyPress={handleKeyPress}
-                placeholder={mode === 'signup' ? 'Min. 6 characters' : 'Your password'}
-                className="w-full pl-11 pr-11 py-3 glass rounded-2xl border border-white/40 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-              >
-                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
-          </div>
-
-          {/* Error */}
-          {error && (
-            <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
-              <p className="text-sm text-red-600">{error}</p>
-            </div>
-          )}
-
-          {/* Submit */}
-          <button
-            onClick={handleSubmit}
-            disabled={isLoading}
-            className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
-          >
-            {isLoading ? (
-              <>
-                <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                {mode === 'login' ? 'Logging in...' : 'Creating account...'}
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-5 h-5" />
-                {mode === 'login' ? 'Log In' : 'Create Account'}
-              </>
+            {/* Username (signup only) */}
+            {mode === 'signup' && (
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-1.5">Username</label>
+                <div className="relative">
+                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text" value={username} onChange={e => setUsername(e.target.value)} onKeyPress={handleKeyPress}
+                    placeholder="Your display name"
+                    className="w-full pl-11 pr-4 py-3 glass rounded-2xl border border-white/40 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
+                  />
+                </div>
+              </div>
             )}
-          </button>
 
-          {/* Terms note for signup */}
-          {mode === 'signup' && (
-            <p className="text-xs text-gray-500 text-center">
-              By signing up you agree to our{' '}
-              <button type="button" onClick={() => setShowTerms(true)} className="text-pink-600 font-semibold hover:underline">
-                Terms of Service
-              </button>
-            </p>
-          )}
-        </div>
+            {/* Password */}
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type={showPassword ? 'text' : 'password'} value={password}
+                  onChange={e => setPassword(e.target.value)} onKeyPress={handleKeyPress}
+                  placeholder={mode === 'signup' ? 'Min. 6 characters' : 'Your password'}
+                  className="w-full pl-11 pr-11 py-3 glass rounded-2xl border border-white/40 focus:border-pink-400 focus:outline-none text-gray-800 placeholder-gray-400 text-sm"
+                />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors">
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
+            </div>
+
+            {/* Forgot password link (login only) */}
+            {mode === 'login' && (
+              <div className="text-right -mt-1">
+                <button type="button" onClick={() => switchMode('forgot')} className="text-xs text-pink-600 font-semibold hover:underline">
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
+            {/* Error */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-2xl px-4 py-3">
+                <p className="text-sm text-red-600">{error}</p>
+              </div>
+            )}
+
+            {/* Submit */}
+            <button
+              onClick={handleSubmit} disabled={isLoading}
+              className="w-full py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
+            >
+              {isLoading
+                ? <><div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />{mode === 'login' ? 'Logging in...' : 'Creating account...'}</>
+                : <><Sparkles className="w-5 h-5" />{mode === 'login' ? 'Log In' : 'Create Account'}</>}
+            </button>
+
+            {/* Terms note for signup */}
+            {mode === 'signup' && (
+              <p className="text-xs text-gray-500 text-center">
+                By signing up you agree to our{' '}
+                <button type="button" onClick={() => setShowTerms(true)} className="text-pink-600 font-semibold hover:underline">
+                  Terms of Service
+                </button>
+              </p>
+            )}
+          </div>
+        )}
 
         {/* Footer */}
         <div className="mt-6 text-center border-t border-white/30 pt-5">
@@ -310,8 +316,8 @@ export default function AuthPage() {
               <h3 className="font-bold text-base mt-4">6. Contact</h3>
               <p>Questions? <strong>contact@damicodesphere.com</strong></p>
             </div>
-            <div className="mt-6 flex gap-3">
-              <button onClick={() => setShowTerms(false)} className="flex-1 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold transition-all">
+            <div className="mt-6">
+              <button onClick={() => setShowTerms(false)} className="w-full py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold transition-all">
                 Got it!
               </button>
             </div>

@@ -173,8 +173,10 @@ function ImageMessage({ msg }: { msg: ChatMessage }) {
     if (!msg.imageUrl) return;
     const a = document.createElement('a');
     a.href = msg.imageUrl;
-    a.download = `dani-image-${Date.now()}.png`;
+    a.download = `dani-${(msg.imagePrompt || 'image').substring(0, 30).replace(/[^a-z0-9]/gi, '_')}.png`;
+    document.body.appendChild(a);
     a.click();
+    document.body.removeChild(a);
   };
 
   return (
@@ -196,31 +198,55 @@ function ImageMessage({ msg }: { msg: ChatMessage }) {
             </div>
             <span className="text-sm text-gray-500 italic animate-pulse">Generating your image...</span>
           </div>
-          <div className="w-full max-w-xs h-40 rounded-2xl bg-gradient-to-br from-pink-200 via-purple-200 to-blue-200 animate-pulse" />
+          <div className="w-full max-w-xs h-48 rounded-2xl bg-gradient-to-br from-pink-200 via-purple-200 to-blue-200 animate-pulse" />
         </div>
       ) : msg.imageUrl ? (
-        <div className="relative group/img inline-block">
-          <img
-            src={msg.imageUrl}
-            alt={msg.imagePrompt}
-            className="rounded-2xl w-full max-w-xs object-cover shadow-lg border-2 border-white/30 transition-transform group-hover/img:scale-[1.02]"
-          />
-          <button
-            onClick={handleDownload}
-            className="absolute bottom-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-all"
-            title="Download"
-          >
-            <Download className="w-4 h-4" />
-          </button>
+        <div className="rounded-2xl overflow-hidden max-w-xs shadow-lg border border-white/30 bg-black/5">
+          {/* Image with watermark overlay */}
+          <div className="relative group/img">
+            <img
+              src={msg.imageUrl}
+              alt={msg.imagePrompt}
+              className="w-full object-cover block transition-transform duration-300 group-hover/img:scale-[1.02]"
+            />
+            {/* DANI watermark — bottom right */}
+            <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-sm px-3 py-1.5 rounded-full pointer-events-none z-10">
+              <span
+                className="text-xs font-bold tracking-widest uppercase"
+                style={{
+                  background: 'linear-gradient(135deg, #ff69b4, #c084fc, #f9a8d4)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                DANI
+              </span>
+            </div>
+            {/* Download button — bottom left, visible on hover */}
+            <button
+              onClick={handleDownload}
+              className="absolute bottom-3 left-3 w-9 h-9 bg-black/60 backdrop-blur-sm hover:bg-pink-500/80 text-white rounded-full flex items-center justify-center opacity-0 group-hover/img:opacity-100 transition-all duration-200 z-10"
+              title="Download image"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          </div>
+          {/* Caption bar */}
+          <div className="px-4 py-2.5 flex items-center justify-between gap-3 border-t border-white/20 bg-white/30 backdrop-blur-sm">
+            <p className="text-xs text-gray-500 italic truncate flex-1">
+              ✨ &quot;{(msg.imagePrompt || '').substring(0, 80)}{(msg.imagePrompt || '').length > 80 ? '...' : ''}&quot;
+            </p>
+            <span className="text-[10px] font-semibold px-2 py-1 rounded-full bg-gradient-to-r from-pink-500/20 to-purple-500/20 text-pink-700 whitespace-nowrap flex-shrink-0">
+              AI by DANI
+            </span>
+          </div>
         </div>
       ) : (
         <div className="flex items-center gap-2 text-red-400 text-sm">
           <ImageIcon className="w-4 h-4" />
           <span>Image generation failed. Try again!</span>
         </div>
-      )}
-      {msg.imagePrompt && (
-        <p className="text-xs text-gray-400 italic">✨ &quot;{msg.imagePrompt}&quot;</p>
       )}
     </div>
   );

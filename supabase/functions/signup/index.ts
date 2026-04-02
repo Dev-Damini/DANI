@@ -8,8 +8,25 @@ serve(async (req) => {
   }
 
   try {
-    const { email, username, password } = await req.json();
-    console.log('Signup request for email:', email);
+    const { email, username, password, confirmOnly } = await req.json();
+    console.log('Signup request for email:', email, confirmOnly ? '(confirm only)' : '');
+
+    // ── Confirm-only mode: auto-confirm an existing unconfirmed account ──
+    if (confirmOnly && email) {
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+      const { error: confirmError } = await supabaseAdmin.rpc('confirm_user_email', {
+        user_email: email.trim().toLowerCase()
+      });
+      if (confirmError) console.error('Confirm-only error (non-fatal):', confirmError.message);
+      else console.log('Email confirmed via confirm-only mode');
+      return new Response(
+        JSON.stringify({ confirmed: true }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!email || !password || !username) {
       return new Response(
