@@ -7,7 +7,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { messages, conversationId } = await req.json();
+    const { messages, conversationId, responseStyle } = await req.json();
 
     if (!messages || !Array.isArray(messages)) {
       return new Response(
@@ -93,6 +93,14 @@ Deno.serve(async (req) => {
       }
     }
 
+    // ─── Response Style ──────────────────────────────────────────────────────
+    const styleInstructions: Record<string, string> = {
+      brief: 'RESPONSE STYLE: Be concise and direct. Give short, clear answers. Avoid long explanations unless asked. Prefer 1-3 sentences when possible.',
+      educational: 'RESPONSE STYLE: Be thorough and educational. Explain concepts clearly with examples, context, and relevant details. Help the user truly understand.',
+      creative: 'RESPONSE STYLE: Be expressive and creative! Use vivid language, analogies, storytelling, and fun examples. Make responses engaging and imaginative 🌟.',
+    };
+    const styleNote = styleInstructions[responseStyle] || styleInstructions.educational;
+
     // ─── System Prompt ───────────────────────────────────────────────────────
     const systemPrompt = `You are DANI (Digital Artificial Neural Intelligence) — a sweet, warm, and highly capable AI assistant.
 
@@ -110,6 +118,8 @@ CAPABILITIES:
 
 CURRENT USER EMOTION: ${detectedEmotion}
 ${detectedEmotion !== 'neutral' ? `Acknowledge this subtly with empathy in your response.` : ''}
+
+${styleNote}
 
 IMAGE GENERATION:
 - If the user asks you to "generate", "create", "draw", "make", or "produce" an image/picture/photo/art, respond with ONLY this JSON (nothing else):

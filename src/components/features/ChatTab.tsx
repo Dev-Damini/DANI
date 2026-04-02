@@ -253,7 +253,7 @@ function ImageMessage({ msg }: { msg: ChatMessage }) {
 }
 
 // ─── Main ChatTab ─────────────────────────────────────────────────────────────
-export default function ChatTab() {
+export default function ChatTab({ responseStyle = 'educational' }: { responseStyle?: string }) {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const { messages: dbMessages } = useMessages(currentConversationId);
   const [messages, setLocalMessages] = useState<ChatMessage[]>([]);
@@ -294,7 +294,8 @@ export default function ChatTab() {
     try {
       if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
       setIsSpeaking(true);
-      const { data, error } = await supabase.functions.invoke('tts-elevenlabs', { body: { text } });
+      const voiceId = localStorage.getItem('dani-voice') || 'EXAVITQu4vr4xnSDxMaL';
+      const { data, error } = await supabase.functions.invoke('tts-elevenlabs', { body: { text, voiceId } });
       if (error) throw error;
       const audioUrl = URL.createObjectURL(data);
       const audio = new Audio(audioUrl);
@@ -386,7 +387,7 @@ export default function ChatTab() {
     try {
       const history = [...messages, userMessage].map(m => ({ role: m.role, content: m.content }));
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { messages: history, conversationId: currentConversationId }
+        body: { messages: history, conversationId: currentConversationId, responseStyle }
       });
 
       if (error) {
