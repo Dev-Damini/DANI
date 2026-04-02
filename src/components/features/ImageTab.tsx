@@ -124,8 +124,18 @@ export default function ImageTab() {
       console.log('Generated image:', data);
       
       // Add the image to the list
-      if (data && data.image) {
-        setImages(prev => [data.image, ...prev]);
+      if (data && data.image_url) {
+        // Build a local image object from the returned URL
+        const newImage: GeneratedImage = {
+          id: crypto.randomUUID(),
+          user_id: 'local',
+          prompt,
+          style: selectedStyle,
+          image_url: data.image_url,
+          file_path: '',
+          created_at: new Date().toISOString(),
+        };
+        setImages(prev => [newImage, ...prev]);
         setPrompt('');
         setSelectedPreset(null);
       } else {

@@ -1,19 +1,41 @@
-import { useState, useRef, useEffect } from 'react';
-import { Send, Sparkles, Plus, History, Trash2, Volume2, Heart, Frown, Smile, Zap, Download, ImageIcon } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  Send, Sparkles, Plus, Search, Trash2, Volume2, Heart, Frown,
+  Smile, Zap, Download, ImageIcon, Copy, Check, Menu, X, MessageCircle
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useConversations } from '@/hooks/useConversations';
 import { useMessages } from '@/hooks/useMessages';
 import type { Message } from '@/types';
 
-// ─── Markdown Renderer ───────────────────────────────────────────────────────
+// ─── Copy Button ──────────────────────────────────────────────────────────────
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+  return (
+    <button
+      onClick={handleCopy}
+      className="absolute top-2 right-2 p-1.5 bg-white/10 hover:bg-white/25 rounded-lg transition-all text-gray-300 hover:text-white"
+      title="Copy code"
+    >
+      {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
+// ─── Markdown Renderer ────────────────────────────────────────────────────────
 function renderMarkdown(text: string): React.ReactNode[] {
   const lines = text.split('\n');
   const nodes: React.ReactNode[] = [];
   let i = 0;
 
   const inlineFormat = (line: string, key: string): React.ReactNode => {
-    // bold + code inline
     const parts = line.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
     return (
       <span key={key}>
@@ -37,35 +59,32 @@ function renderMarkdown(text: string): React.ReactNode[] {
   while (i < lines.length) {
     const line = lines[i];
 
-    // Table detection: lines that start with |
+    // Table detection
     if (line.trim().startsWith('|')) {
       const tableLines: string[] = [];
       while (i < lines.length && lines[i].trim().startsWith('|')) {
         tableLines.push(lines[i]);
         i++;
       }
-      // parse table
       const rows = tableLines
-        .filter(l => !l.match(/^\|[\s\-|]+\|$/)) // skip separator rows
+        .filter(l => !l.match(/^\|[\s\-|]+\|$/))
         .map(l =>
-          l.split('|')
-            .map(c => c.trim())
-            .filter((c, idx, arr) => idx > 0 && idx < arr.length - 1)
+          l.split('|').map(c => c.trim()).filter((_, idx, arr) => idx > 0 && idx < arr.length - 1)
         );
       if (rows.length > 0) {
         nodes.push(
-          <div key={`table-${i}`} className="overflow-x-auto my-3">
-            <table className="min-w-full border-collapse rounded-xl overflow-hidden text-sm">
+          <div key={`table-${i}`} className="overflow-x-auto my-3 rounded-xl">
+            <table className="min-w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-gradient-to-r from-pink-500 to-purple-600 text-white">
                   {rows[0].map((cell, ci) => (
-                    <th key={ci} className="px-4 py-2 text-left font-semibold whitespace-nowrap">{cell}</th>
+                    <th key={ci} className="px-4 py-2.5 text-left font-semibold whitespace-nowrap">{cell}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {rows.slice(1).map((row, ri) => (
-                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white/60' : 'bg-pink-50/60'}>
+                  <tr key={ri} className={ri % 2 === 0 ? 'bg-white/70' : 'bg-pink-50/70'}>
                     {row.map((cell, ci) => (
                       <td key={ci} className="px-4 py-2 border-t border-white/40">{inlineFormat(cell, `${ri}-${ci}`)}</td>
                     ))}
@@ -88,53 +107,52 @@ function renderMarkdown(text: string): React.ReactNode[] {
         codeLines.push(lines[i]);
         i++;
       }
-      i++; // skip closing ```
+      i++;
+      const codeText = codeLines.join('\n');
       nodes.push(
-        <pre key={`code-${i}`} className="bg-gray-900 text-green-300 p-4 rounded-xl my-3 overflow-x-auto text-sm font-mono">
-          {lang && <div className="text-gray-500 text-xs mb-2">{lang}</div>}
-          <code>{codeLines.join('\n')}</code>
-        </pre>
+        <div key={`code-${i}`} className="relative my-3 group/code">
+          <pre className="bg-gray-900 text-green-300 p-4 pt-8 rounded-xl overflow-x-auto text-sm font-mono">
+            {lang && <div className="absolute top-2 left-4 text-gray-500 text-xs font-mono">{lang}</div>}
+            <CopyButton text={codeText} />
+            <code>{codeText}</code>
+          </pre>
+        </div>
       );
       continue;
     }
 
-    // Heading
+    // Headings
     if (line.startsWith('### ')) {
-      nodes.push(<h3 key={`h3-${i}`} className="font-bold text-base mt-3 mb-1">{inlineFormat(line.slice(4), `h3c-${i}`)}</h3>);
+      nodes.push(<h3 key={`h3-${i}`} className="font-bold text-base mt-3 mb-1 text-gray-800">{inlineFormat(line.slice(4), `h3c-${i}`)}</h3>);
       i++; continue;
     }
     if (line.startsWith('## ')) {
-      nodes.push(<h2 key={`h2-${i}`} className="font-bold text-lg mt-3 mb-1">{inlineFormat(line.slice(3), `h2c-${i}`)}</h2>);
+      nodes.push(<h2 key={`h2-${i}`} className="font-bold text-lg mt-3 mb-1 text-gray-800">{inlineFormat(line.slice(3), `h2c-${i}`)}</h2>);
       i++; continue;
     }
     if (line.startsWith('# ')) {
-      nodes.push(<h1 key={`h1-${i}`} className="font-bold text-xl mt-3 mb-1">{inlineFormat(line.slice(2), `h1c-${i}`)}</h1>);
+      nodes.push(<h1 key={`h1-${i}`} className="font-bold text-xl mt-3 mb-1 text-gray-800">{inlineFormat(line.slice(2), `h1c-${i}`)}</h1>);
       i++; continue;
     }
 
     // Bullet list
     if (line.match(/^[-*] /)) {
-      nodes.push(
-        <li key={`li-${i}`} className="ml-4 list-disc">{inlineFormat(line.slice(2), `lic-${i}`)}</li>
-      );
+      nodes.push(<li key={`li-${i}`} className="ml-5 list-disc leading-relaxed">{inlineFormat(line.slice(2), `lic-${i}`)}</li>);
       i++; continue;
     }
 
     // Numbered list
     if (line.match(/^\d+\. /)) {
-      nodes.push(
-        <li key={`oli-${i}`} className="ml-4 list-decimal">{inlineFormat(line.replace(/^\d+\. /, ''), `olic-${i}`)}</li>
-      );
+      nodes.push(<li key={`oli-${i}`} className="ml-5 list-decimal leading-relaxed">{inlineFormat(line.replace(/^\d+\. /, ''), `olic-${i}`)}</li>);
       i++; continue;
     }
 
     // Empty line
     if (line.trim() === '') {
-      nodes.push(<br key={`br-${i}`} />);
+      nodes.push(<div key={`br-${i}`} className="h-2" />);
       i++; continue;
     }
 
-    // Normal paragraph line
     nodes.push(<span key={`p-${i}`} className="block leading-relaxed">{inlineFormat(line, `pc-${i}`)}</span>);
     i++;
   }
@@ -142,7 +160,7 @@ function renderMarkdown(text: string): React.ReactNode[] {
   return nodes;
 }
 
-// ─── Message Types ────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface ChatMessage extends Message {
   imageUrl?: string;
   imagePrompt?: string;
@@ -155,38 +173,42 @@ function ImageMessage({ msg }: { msg: ChatMessage }) {
     if (!msg.imageUrl) return;
     const a = document.createElement('a');
     a.href = msg.imageUrl;
-    a.download = `dani-image-${Date.now()}.jpg`;
+    a.download = `dani-image-${Date.now()}.png`;
     a.click();
   };
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       <p className="text-base font-medium flex items-center gap-2">
         🎨 I&apos;ve generated an image for you!
       </p>
       {msg.isGeneratingImage ? (
-        <div className="flex items-center gap-3 py-4 px-2">
-          <div className="flex gap-1.5">
-            {[0, 150, 300].map(delay => (
-              <div
-                key={delay}
-                className="w-3 h-3 rounded-full bg-gradient-to-r from-pink-400 to-purple-500 animate-bounce"
-                style={{ animationDelay: `${delay}ms` }}
-              />
-            ))}
+        <div className="flex flex-col items-start gap-3 py-4 px-1">
+          <div className="flex gap-2 items-center">
+            <div className="flex gap-1.5">
+              {[0, 120, 240].map(delay => (
+                <div
+                  key={delay}
+                  className="w-3 h-3 rounded-full bg-gradient-to-r from-pink-400 to-purple-500 animate-bounce"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
+            </div>
+            <span className="text-sm text-gray-500 italic animate-pulse">Generating your image...</span>
           </div>
-          <span className="text-sm text-gray-500 italic animate-pulse">Generating image...</span>
+          <div className="w-full max-w-xs h-40 rounded-2xl bg-gradient-to-br from-pink-200 via-purple-200 to-blue-200 animate-pulse" />
         </div>
       ) : msg.imageUrl ? (
-        <div className="relative group">
+        <div className="relative group/img inline-block">
           <img
             src={msg.imageUrl}
             alt={msg.imagePrompt}
-            className="rounded-2xl w-full max-w-xs object-cover shadow-lg border-2 border-white/30 transition-transform group-hover:scale-[1.02]"
+            className="rounded-2xl w-full max-w-xs object-cover shadow-lg border-2 border-white/30 transition-transform group-hover/img:scale-[1.02]"
           />
           <button
             onClick={handleDownload}
-            className="absolute bottom-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover:opacity-100 transition-all"
+            className="absolute bottom-2 right-2 p-2 bg-black/50 hover:bg-black/70 text-white rounded-full opacity-0 group-hover/img:opacity-100 transition-all"
+            title="Download"
           >
             <Download className="w-4 h-4" />
           </button>
@@ -198,7 +220,7 @@ function ImageMessage({ msg }: { msg: ChatMessage }) {
         </div>
       )}
       {msg.imagePrompt && (
-        <p className="text-xs text-gray-400 italic">✨ "{msg.imagePrompt}"</p>
+        <p className="text-xs text-gray-400 italic">✨ &quot;{msg.imagePrompt}&quot;</p>
       )}
     </div>
   );
@@ -207,12 +229,13 @@ function ImageMessage({ msg }: { msg: ChatMessage }) {
 // ─── Main ChatTab ─────────────────────────────────────────────────────────────
 export default function ChatTab() {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
-  const { messages: dbMessages, setMessages } = useMessages(currentConversationId);
+  const { messages: dbMessages } = useMessages(currentConversationId);
   const [messages, setLocalMessages] = useState<ChatMessage[]>([]);
   const { conversations, createConversation, deleteConversation } = useConversations();
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
+  const [historySearch, setHistorySearch] = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState<string>('neutral');
@@ -220,39 +243,32 @@ export default function ChatTab() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialized = useRef(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const welcomeMessage: ChatMessage = {
+    id: 'welcome',
+    role: 'assistant',
+    content: "Hi! I'm DANI, your sweet and supportive AI assistant! 💕 How can I help you today?",
+    timestamp: new Date(),
+  };
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      setIsAuthenticated(!!user);
-    });
+    supabase.auth.getUser().then(({ data: { user } }) => setIsAuthenticated(!!user));
     if (!initialized.current) {
       initialized.current = true;
-      setLocalMessages([{
-        id: '1',
-        role: 'assistant',
-        content: "Hi! I'm DANI, your sweet and supportive AI assistant! 💕 How can I help you today?",
-        timestamp: new Date()
-      }]);
+      setLocalMessages([welcomeMessage]);
     }
   }, []);
 
-  // Sync db messages when conversation changes
   useEffect(() => {
-    if (dbMessages.length > 0) {
-      setLocalMessages(dbMessages);
-    }
+    if (dbMessages.length > 0) setLocalMessages(dbMessages);
   }, [dbMessages]);
 
-  const speakText = async (text: string) => {
+  const speakText = useCallback(async (text: string) => {
     try {
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-        currentAudioRef.current = null;
-      }
+      if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; }
       setIsSpeaking(true);
-      const { data, error } = await supabase.functions.invoke('tts-elevenlabs', {
-        body: { text }
-      });
+      const { data, error } = await supabase.functions.invoke('tts-elevenlabs', { body: { text } });
       if (error) throw error;
       const audioUrl = URL.createObjectURL(data);
       const audio = new Audio(audioUrl);
@@ -261,102 +277,79 @@ export default function ChatTab() {
       audio.onended = () => { setIsSpeaking(false); URL.revokeObjectURL(audioUrl); currentAudioRef.current = null; };
       audio.onerror = () => { setIsSpeaking(false); URL.revokeObjectURL(audioUrl); currentAudioRef.current = null; };
       await audio.play();
-    } catch {
-      setIsSpeaking(false);
-    }
-  };
+    } catch { setIsSpeaking(false); }
+  }, []);
 
   const stopSpeaking = () => {
-    if (currentAudioRef.current) {
-      currentAudioRef.current.pause();
-      currentAudioRef.current = null;
-      setIsSpeaking(false);
-    }
+    if (currentAudioRef.current) { currentAudioRef.current.pause(); currentAudioRef.current = null; setIsSpeaking(false); }
   };
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+  useEffect(() => { messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, isTyping]);
 
   const startNewConversation = async () => {
-    if (!isAuthenticated) {
+    setNavOpen(false);
+    if (isAuthenticated) {
+      try {
+        const conversation = await createConversation(`Chat ${new Date().toLocaleDateString()}`);
+        setCurrentConversationId(conversation.id);
+      } catch (error) { console.error('Error starting conversation:', error); }
+    } else {
       setCurrentConversationId(null);
-      setLocalMessages([{
-        id: '1', role: 'assistant',
-        content: "Hi! I'm DANI, your sweet and supportive AI assistant! 💕 How can I help you today?",
-        timestamp: new Date()
-      }]);
-      return;
     }
-    try {
-      const conversation = await createConversation(`Chat ${new Date().toLocaleDateString()}`);
-      setCurrentConversationId(conversation.id);
-      setLocalMessages([{
-        id: '1', role: 'assistant',
-        content: "Hi! I'm DANI, your sweet and supportive AI assistant! 💕 How can I help you today?",
-        timestamp: new Date()
-      }]);
-    } catch (error) {
-      console.error('Error starting conversation:', error);
-    }
+    setLocalMessages([welcomeMessage]);
+    setCurrentEmotion('neutral');
+    setMessageCount(0);
+    inputRef.current?.focus();
   };
 
   const loadConversation = (conversationId: string) => {
     setCurrentConversationId(conversationId);
-    setShowHistory(false);
+    setNavOpen(false);
   };
 
   const handleDeleteConversation = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Delete this conversation?')) {
-      await deleteConversation(id);
-      if (currentConversationId === id) {
-        setCurrentConversationId(null);
-        setLocalMessages([]);
-      }
+    if (!confirm('Delete this conversation?')) return;
+    await deleteConversation(id);
+    if (currentConversationId === id) {
+      setCurrentConversationId(null);
+      setLocalMessages([welcomeMessage]);
     }
   };
 
-  // ─── Detect Image Request ──────────────────────────────────────────────────
   const isImageRequest = (text: string): boolean => {
     const lower = text.toLowerCase();
-    return /\b(generate|create|make|draw|design|show me|paint|produce)\b.{0,30}\b(image|photo|picture|illustration|artwork|drawing|portrait|wallpaper|visual)\b/.test(lower)
-      || /\b(image|picture|photo)\b.{0,30}\b(of|showing|with|about)\b/.test(lower);
+    return /\b(generate|create|make|draw|design|show me|paint|produce|render)\b.{0,40}\b(image|photo|picture|illustration|artwork|drawing|portrait|wallpaper|visual|art)\b/.test(lower)
+      || /\b(image|picture|photo|art)\b.{0,30}\b(of|showing|with|about|featuring)\b/.test(lower);
   };
 
-  // ─── Generate image in chat ────────────────────────────────────────────────
   const generateImageInChat = async (prompt: string, messageId: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-ai', {
         body: { prompt, style: 'realistic' }
       });
-
       if (error) throw error;
-
+      const imgUrl = data?.image_url;
+      if (!imgUrl) throw new Error('No image returned');
       setLocalMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { ...m, isGeneratingImage: false, imageUrl: data.image_url || data.url, imagePrompt: prompt }
-          : m
+        m.id === messageId ? { ...m, isGeneratingImage: false, imageUrl: imgUrl, imagePrompt: prompt } : m
       ));
     } catch (err) {
       console.error('Image generation error:', err);
       setLocalMessages(prev => prev.map(m =>
-        m.id === messageId
-          ? { ...m, isGeneratingImage: false, imageUrl: undefined }
-          : m
+        m.id === messageId ? { ...m, isGeneratingImage: false, imageUrl: undefined } : m
       ));
     }
   };
 
-  // ─── Send Message ──────────────────────────────────────────────────────────
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim() || isTyping) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: 'user',
       content: input,
-      timestamp: new Date()
+      timestamp: new Date(),
     };
 
     setLocalMessages(prev => [...prev, userMessage]);
@@ -365,34 +358,26 @@ export default function ChatTab() {
     setIsTyping(true);
 
     try {
-      const messageHistory = [...messages, userMessage].map(msg => ({
-        role: msg.role,
-        content: msg.content
-      }));
-
+      const history = [...messages, userMessage].map(m => ({ role: m.role, content: m.content }));
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { messages: messageHistory, conversationId: currentConversationId }
+        body: { messages: history, conversationId: currentConversationId }
       });
 
       if (error) {
-        let errorMessage = error.message;
+        let msg = error.message;
         if (error instanceof FunctionsHttpError) {
-          try {
-            const statusCode = error.context?.status ?? 500;
-            const textContent = await error.context?.text();
-            errorMessage = `[Code: ${statusCode}] ${textContent || error.message}`;
-          } catch { /* ignore */ }
+          try { const t = await error.context?.text(); msg = t || msg; } catch { /* ignore */ }
         }
-        throw new Error(errorMessage);
+        throw new Error(msg);
       }
 
       if (data.emotion) setCurrentEmotion(data.emotion);
       if (data.context?.messageCount) setMessageCount(data.context.messageCount);
 
-      // Check if AI returned an image_request JSON
-      let aiText = data.message as string;
+      let aiText: string = data.message || '';
       let imageRequest: { prompt: string } | null = null;
 
+      // Check if AI returned a JSON image_request
       try {
         const trimmed = aiText.trim();
         if (trimmed.startsWith('{') && trimmed.includes('"type":"image_request"')) {
@@ -403,14 +388,13 @@ export default function ChatTab() {
         }
       } catch { /* not JSON */ }
 
-      // Also detect if user directly asked for image (frontend fallback)
+      // Frontend fallback detection
       if (!imageRequest && isImageRequest(userInput)) {
-        // Extract prompt from user message
         const cleaned = userInput
-          .replace(/\b(generate|create|make|draw|design|show me|paint|produce)\b/gi, '')
-          .replace(/\b(an?|the)\s+\b(image|photo|picture|illustration|artwork|drawing|portrait|wallpaper|visual)\s+(of\s+)?/gi, '')
-          .trim();
-        imageRequest = { prompt: cleaned || userInput };
+          .replace(/\b(generate|create|make|draw|design|show me|paint|produce|render)\b/gi, '')
+          .replace(/\b(an?|the)\s+(image|photo|picture|illustration|artwork|drawing|portrait|wallpaper|visual|art)(\s+(of|showing|with|about|featuring))?\s*/gi, '')
+          .trim() || userInput;
+        imageRequest = { prompt: cleaned };
       }
 
       const msgId = (Date.now() + 1).toString();
@@ -422,127 +406,186 @@ export default function ChatTab() {
           content: '🎨 image',
           imagePrompt: imageRequest.prompt,
           isGeneratingImage: true,
-          timestamp: new Date()
+          timestamp: new Date(),
         };
         setLocalMessages(prev => [...prev, imageMsg]);
         setIsTyping(false);
         generateImageInChat(imageRequest!.prompt, msgId);
       } else {
-        const assistantMessage: ChatMessage = {
-          id: msgId,
-          role: 'assistant',
-          content: aiText,
-          timestamp: new Date()
-        };
-        setLocalMessages(prev => [...prev, assistantMessage]);
+        setLocalMessages(prev => [...prev, {
+          id: msgId, role: 'assistant', content: aiText, timestamp: new Date()
+        }]);
         speakText(aiText);
       }
     } catch (error) {
-      console.error('Error:', error);
-      const errorMessage: ChatMessage = {
+      console.error('Chat error:', error);
+      setLocalMessages(prev => [...prev, {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: "I'm sorry, I encountered an error. Please try again! 💕",
-        timestamp: new Date()
-      };
-      setLocalMessages(prev => [...prev, errorMessage]);
+        timestamp: new Date(),
+      }]);
     } finally {
       setIsTyping(false);
     }
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
-    }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  const filteredConversations = conversations.filter(c =>
+    c.title.toLowerCase().includes(historySearch.toLowerCase())
+  );
+
   return (
-    <div className="flex-1 flex max-w-7xl mx-auto w-full">
-      {/* History Sidebar */}
-      {isAuthenticated && showHistory && (
-        <div className="w-80 border-r border-white/20 glass p-4 overflow-y-auto">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-bold text-gray-800">Chat History</h3>
-            <button onClick={() => setShowHistory(false)} className="text-gray-500 hover:text-gray-700">✕</button>
-          </div>
+    <div className="flex-1 flex overflow-hidden relative">
+      {/* ── Side Nav Overlay ── */}
+      {navOpen && (
+        <div
+          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-30 lg:hidden"
+          onClick={() => setNavOpen(false)}
+        />
+      )}
+
+      {/* ── Side Nav Panel ── */}
+      <aside
+        className={`fixed lg:relative top-0 left-0 h-full z-40 lg:z-auto flex flex-col w-72 glass border-r border-white/20 transition-transform duration-300 ease-in-out
+          ${navOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-0 lg:overflow-hidden lg:border-0'}`}
+        style={{ minHeight: '100%' }}
+      >
+        <div className="flex items-center justify-between px-5 pt-5 pb-3">
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <MessageCircle className="w-4 h-4 text-pink-500" /> Chats
+          </h3>
+          <button onClick={() => setNavOpen(false)} className="p-1.5 rounded-lg hover:bg-white/60 transition-all lg:hidden">
+            <X className="w-4 h-4 text-gray-600" />
+          </button>
+        </div>
+
+        {/* New Chat Button */}
+        <div className="px-4 pb-3">
           <button
             onClick={startNewConversation}
-            className="w-full mb-4 px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg font-medium hover:from-pink-600 hover:to-purple-700 transition-all flex items-center justify-center gap-2"
+            className="w-full py-2.5 px-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium hover:from-pink-600 hover:to-purple-700 transition-all flex items-center justify-center gap-2 shadow-md"
           >
             <Plus className="w-4 h-4" /> New Chat
           </button>
-          <div className="space-y-2">
-            {conversations.map(conv => (
+        </div>
+
+        {/* Search */}
+        {isAuthenticated && (
+          <div className="px-4 pb-3">
+            <div className="flex items-center gap-2 bg-white/60 rounded-xl px-3 py-2 border border-white/40">
+              <Search className="w-4 h-4 text-gray-400 flex-shrink-0" />
+              <input
+                type="text"
+                placeholder="Search chats..."
+                value={historySearch}
+                onChange={e => setHistorySearch(e.target.value)}
+                className="flex-1 bg-transparent border-none outline-none text-sm text-gray-700 placeholder-gray-400"
+              />
+              {historySearch && (
+                <button onClick={() => setHistorySearch('')} className="text-gray-400 hover:text-gray-600">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Conversation List */}
+        <div className="flex-1 overflow-y-auto px-3 pb-4 space-y-1">
+          {!isAuthenticated ? (
+            <div className="text-center py-8 text-sm text-gray-500 px-4">
+              <MessageCircle className="w-8 h-8 mx-auto mb-2 text-gray-300" />
+              History is available when logged in
+            </div>
+          ) : filteredConversations.length === 0 ? (
+            <div className="text-center py-8 text-sm text-gray-400">
+              {historySearch ? 'No chats match your search' : 'No chats yet'}
+            </div>
+          ) : (
+            filteredConversations.map(conv => (
               <div
                 key={conv.id}
                 onClick={() => loadConversation(conv.id)}
-                className={`p-3 rounded-lg cursor-pointer transition-all flex items-center justify-between group ${
+                className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
                   currentConversationId === conv.id
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white'
-                    : 'bg-white/60 hover:bg-white/80 text-gray-700'
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
+                    : 'hover:bg-white/70 text-gray-700'
                 }`}
               >
-                <div className="flex-1 truncate">
-                  <p className="font-medium truncate">{conv.title}</p>
-                  <p className={`text-xs ${currentConversationId === conv.id ? 'text-pink-100' : 'text-gray-500'}`}>
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">{conv.title}</p>
+                  <p className={`text-xs truncate ${currentConversationId === conv.id ? 'text-pink-100' : 'text-gray-400'}`}>
                     {new Date(conv.updated_at).toLocaleDateString()}
                   </p>
                 </div>
                 <button
-                  onClick={(e) => handleDeleteConversation(conv.id, e)}
-                  className="opacity-0 group-hover:opacity-100 p-1 hover:bg-white/20 rounded transition-all"
+                  onClick={e => handleDeleteConversation(conv.id, e)}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/20 rounded-lg transition-all ml-1 flex-shrink-0"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ))}
-          </div>
+            ))
+          )}
         </div>
-      )}
+      </aside>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col p-4">
-        {isAuthenticated && (
-          <div className="flex gap-2 mb-4">
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              className="px-4 py-2 glass rounded-lg hover:bg-white/80 transition-all flex items-center gap-2"
-            >
-              <History className="w-4 h-4" /> History
-            </button>
-            <button
-              onClick={startNewConversation}
-              className="px-4 py-2 glass rounded-lg hover:bg-white/80 transition-all flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" /> New Chat
-            </button>
+      {/* ── Main Chat ── */}
+      <div className="flex-1 flex flex-col min-w-0 max-w-4xl mx-auto w-full px-4 py-4">
+
+        {/* Top Bar */}
+        <div className="flex items-center gap-3 mb-4">
+          <button
+            onClick={() => setNavOpen(true)}
+            className="p-2.5 glass rounded-xl hover:bg-white/80 transition-all border border-white/30 flex-shrink-0"
+            title="Open chat history"
+          >
+            <Menu className="w-5 h-5 text-gray-600" />
+          </button>
+          <div className="flex-1 glass rounded-xl px-4 py-2 border border-white/30 text-sm text-gray-500 truncate">
+            {currentConversationId ? conversations.find(c => c.id === currentConversationId)?.title || 'Current Chat' : 'New Chat'}
           </div>
-        )}
+          <button
+            onClick={startNewConversation}
+            className="p-2.5 glass rounded-xl hover:bg-white/80 transition-all border border-white/30 flex-shrink-0"
+            title="New chat"
+          >
+            <Plus className="w-5 h-5 text-gray-600" />
+          </button>
+        </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto mb-4 space-y-4">
-          {messages.map((message) => (
+        <div className="flex-1 overflow-y-auto space-y-4 pb-2 scrollbar-thin">
+          {messages.map(message => (
             <div
               key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'} animate-fade-in`}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
             >
               {message.role === 'user' ? (
-                <div className="max-w-[70%] rounded-2xl px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-lg">
+                <div className="max-w-[72%] bg-gradient-to-br from-pink-500 to-purple-600 text-white rounded-2xl rounded-br-sm px-5 py-3 shadow-lg">
                   <p className="whitespace-pre-wrap leading-relaxed">{message.content}</p>
-                  <p className="text-xs mt-1 text-pink-100">
+                  <p className="text-xs mt-1.5 text-pink-100/80">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
               ) : (
-                <div className="max-w-[75%] glass border-2 border-white/30 rounded-2xl px-6 py-4 shadow-md text-gray-800">
+                <div className="max-w-[78%] glass border border-white/40 rounded-2xl rounded-bl-sm px-5 py-4 shadow-md text-gray-800">
+                  {/* DANI avatar badge */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="w-5 h-5 rounded-full bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center flex-shrink-0">
+                      <Sparkles className="w-3 h-3 text-white" />
+                    </div>
+                    <span className="text-xs font-semibold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">DANI</span>
+                  </div>
+
                   {message.content === '🎨 image' ? (
                     <ImageMessage msg={message} />
                   ) : (
-                    <div className="leading-relaxed">
-                      {renderMarkdown(message.content)}
-                    </div>
+                    <div className="leading-relaxed">{renderMarkdown(message.content)}</div>
                   )}
                   <p className="text-xs mt-2 text-gray-400">
                     {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -554,11 +597,14 @@ export default function ChatTab() {
 
           {isTyping && (
             <div className="flex justify-start">
-              <div className="glass border-2 border-white/30 rounded-2xl px-6 py-3">
-                <div className="flex gap-2 items-center">
-                  <div className="w-2 h-2 bg-pink-500 rounded-full animate-pulse" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse" style={{ animationDelay: '300ms' }} />
+              <div className="glass border border-white/40 rounded-2xl rounded-bl-sm px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex gap-1.5">
+                    {[0, 150, 300].map(d => (
+                      <div key={d} className="w-2 h-2 rounded-full bg-gradient-to-r from-pink-400 to-purple-500 animate-bounce" style={{ animationDelay: `${d}ms` }} />
+                    ))}
+                  </div>
+                  <span className="text-xs text-gray-400 italic">DANI is thinking...</span>
                 </div>
               </div>
             </div>
@@ -566,58 +612,58 @@ export default function ChatTab() {
           <div ref={messagesEndRef} />
         </div>
 
-        {/* Emotional Context Bar */}
+        {/* Emotion Bar */}
         {currentEmotion !== 'neutral' && (
           <div className="mb-3 glass rounded-2xl px-4 py-2 border border-white/30 flex items-center gap-3">
-            {currentEmotion === 'happy' && <Smile className="w-5 h-5 text-yellow-500" />}
-            {currentEmotion === 'sad' && <Frown className="w-5 h-5 text-blue-500" />}
-            {(currentEmotion === 'anxious' || currentEmotion === 'angry') && <Zap className="w-5 h-5 text-orange-500" />}
-            <span className="text-sm text-gray-600">
+            {currentEmotion === 'happy' && <Smile className="w-4 h-4 text-yellow-500" />}
+            {currentEmotion === 'sad' && <Frown className="w-4 h-4 text-blue-500" />}
+            {(currentEmotion === 'anxious' || currentEmotion === 'angry') && <Zap className="w-4 h-4 text-orange-500" />}
+            <span className="text-xs text-gray-600">
               I sense you&apos;re feeling <span className="font-semibold capitalize">{currentEmotion}</span>
             </span>
             <Heart className="w-4 h-4 text-pink-500 ml-auto" />
           </div>
         )}
 
-        {/* Input Area */}
-        <div className="glass rounded-3xl p-2 border-2 border-white/30 shadow-lg">
-          <div className="flex gap-2">
-            <div className="flex-1 flex items-center gap-2 px-4">
-              <Sparkles className="w-5 h-5 text-pink-500 flex-shrink-0" />
+        {/* Input */}
+        <div className="glass rounded-2xl border-2 border-white/30 shadow-lg overflow-hidden">
+          <div className="flex items-end gap-2 p-2">
+            <div className="flex-1 flex items-center gap-2 px-3 py-2">
+              <Sparkles className="w-4 h-4 text-pink-400 flex-shrink-0" />
               <input
+                ref={inputRef}
                 type="text"
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
+                onChange={e => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
                 placeholder="Message DANI..."
                 className="flex-1 bg-transparent border-none outline-none text-gray-800 placeholder-gray-400 text-base"
               />
             </div>
-            <button
-              onClick={handleSend}
-              disabled={!input.trim()}
-              className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-medium hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md hover:shadow-lg transform hover:scale-105"
-            >
-              <Send className="w-5 h-5" />
-            </button>
             {isSpeaking && (
               <button
                 onClick={stopSpeaking}
-                className="px-4 py-3 bg-purple-600 text-white rounded-2xl hover:bg-purple-700 transition-all shadow-md"
+                className="p-2.5 bg-purple-100 text-purple-600 rounded-xl hover:bg-purple-200 transition-all"
+                title="Stop speaking"
               >
                 <Volume2 className="w-5 h-5 animate-pulse" />
               </button>
             )}
+            <button
+              onClick={handleSend}
+              disabled={!input.trim() || isTyping}
+              className="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center gap-2"
+            >
+              <Send className="w-4 h-4" />
+            </button>
           </div>
         </div>
 
-        <div className="text-center mt-3 space-y-1">
-          <p className="text-xs text-gray-400">
-            DANI can make mistakes. Consider checking important information.
-          </p>
+        <div className="text-center mt-2 space-y-0.5">
+          <p className="text-xs text-gray-400">DANI can make mistakes. Consider checking important information.</p>
           {messageCount > 0 && (
             <p className="text-xs text-gray-400 uppercase tracking-wider">
-              Conversational Memory: {messageCount} messages remembered
+              Memory: {messageCount} messages
             </p>
           )}
         </div>
