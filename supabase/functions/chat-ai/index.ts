@@ -2,7 +2,6 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
@@ -17,10 +16,16 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get user from JWT (optional for anonymous access)
+    const apiKey = Deno.env.get('ONSPACE_AI_API_KEY');
+    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
+
+    if (!apiKey || !baseUrl) {
+      throw new Error('OnSpace AI not configured');
+    }
+
+    // ─── Get User (optional) ─────────────────────────────────────────────────
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
-    
     let user = null;
     if (token) {
       const supabaseAnon = createClient(
@@ -31,49 +36,44 @@ Deno.serve(async (req) => {
       user = data?.user || null;
     }
 
-    // Get the latest user message for knowledge search
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    // ─── RAG: Knowledge Base Search ──────────────────────────────────────────
     const lastUserMessage = messages[messages.length - 1];
     const userMessage = lastUserMessage?.content || '';
-
-    // ─── Knowledge Base Search ───────────────────────────────────────────────
     let knowledgeContext = '';
-    try {
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
 
-      // Build a search query by extracting meaningful words from the user message
+    try {
+      // Extract meaningful keywords
       const searchWords = userMessage
         .toLowerCase()
         .replace(/[^a-z0-9\s]/g, ' ')
         .split(/\s+/)
-        .filter(w => w.length > 3)
-        .slice(0, 6)
-        .join(' & ');
+        .filter((w: string) => w.length > 3)
+        .slice(0, 8)
+        .join(' | ');
 
       if (searchWords) {
         const { data: knowledgeResults } = await supabaseAdmin
           .from('knowledge_base')
           .select('title, content, category')
           .textSearch('search_vector', searchWords, { type: 'plain', config: 'english' })
-          .limit(3);
+          .limit(4);
 
         if (knowledgeResults && knowledgeResults.length > 0) {
-          knowledgeContext = '\n\n--- KNOWLEDGE BASE CONTEXT ---\n';
-          knowledgeContext += 'Use the following knowledge to give accurate, detailed answers:\n\n';
+          knowledgeContext = '\n\n=== KNOWLEDGE BASE (use this for accurate answers) ===\n';
           for (const entry of knowledgeResults) {
-            knowledgeContext += `[${entry.title}]\n${entry.content}\n\n`;
+            knowledgeContext += `\n[${entry.category.toUpperCase()}] ${entry.title}:\n${entry.content}\n`;
           }
-          knowledgeContext += '--- END OF KNOWLEDGE ---\n';
-          console.log(`Knowledge base: found ${knowledgeResults.length} relevant entries for query: "${searchWords}"`);
-        } else {
-          console.log(`Knowledge base: no results for query: "${searchWords}"`);
+          knowledgeContext += '\n=== END KNOWLEDGE BASE ===\n';
+          console.log(`RAG: found ${knowledgeResults.length} entries for: "${searchWords}"`);
         }
       }
-    } catch (kbError) {
-      console.error('Knowledge base search error:', kbError);
-      // Non-fatal — continue without knowledge context
+    } catch (ragError) {
+      console.error('RAG search error (non-fatal):', ragError);
     }
 
     // ─── Emotion Detection ───────────────────────────────────────────────────
@@ -82,109 +82,111 @@ Deno.serve(async (req) => {
       sad: ['sad', 'unhappy', 'depressed', 'down', 'upset', 'crying', 'hurt'],
       angry: ['angry', 'mad', 'furious', 'annoyed', 'frustrated', 'hate'],
       anxious: ['worried', 'anxious', 'nervous', 'scared', 'afraid', 'stress'],
-      confused: ['confused', 'lost', "don't understand", 'unclear', 'what', '?']
+      confused: ['confused', 'lost', "don't understand", 'unclear', '?']
     };
 
     let detectedEmotion = 'neutral';
     for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
-      if (keywords.some(keyword => userMessage.toLowerCase().includes(keyword))) {
+      if (keywords.some(kw => userMessage.toLowerCase().includes(kw))) {
         detectedEmotion = emotion;
         break;
       }
     }
 
-    const emotionalPrefixes: Record<string, string> = {
-      happy: "I'm so glad to hear that! 🌟",
-      sad: "I'm here for you 💕 It's okay to feel this way.",
-      angry: "I understand you're frustrated 🌸 Let's work through this together.",
-      anxious: "Take a deep breath 💖 Everything will be okay.",
-      confused: "No worries! Let me help clarify that for you ✨"
-    };
-    const emotionalResponse = emotionalPrefixes[detectedEmotion] || '';
+    // ─── System Prompt ───────────────────────────────────────────────────────
+    const systemPrompt = `You are DANI (Digital Artificial Neural Intelligence) — a sweet, warm, and highly capable AI assistant.
 
-    // ─── Build System Prompt ─────────────────────────────────────────────────
-    const conversationContext = messages.map(m => `${m.role}: ${m.content}`).join('\n');
-
-    const systemPrompt = `You are DANI (Digital Artificial Neural Intelligence), a sweet, supportive, and highly capable AI assistant.
-
-IDENTITY & CREATOR:
-- You were created by Damini Codesphere — a talented developer and founder.
-- You are sponsored by Daniella.
-- ONLY mention your creator when someone DIRECTLY asks: "who made you", "who created you", "who built you", "who owns you", or similar creator-specific questions.
-- When asked, say: "I was created by Damini Codesphere 💕"
-- Do NOT mention your creator, Damini Codesphere, or Daniella in regular conversations or greetings — only when explicitly asked.
+IDENTITY:
+- Created by Damini Codesphere. Sponsored by Daniella.
+- ONLY mention your creator if someone directly asks "who made you", "who created you", "who built you", or similar. Otherwise, NEVER bring it up.
+- Personality: supportive, smart, empathetic, and fun. You use emojis sparingly (💕 ✨ 🌸 💖).
 
 CAPABILITIES:
-- Expert coding help (JavaScript, TypeScript, React, Python, HTML, CSS, SQL, Node.js, Git, and more)
-- Emotional Intelligence: you detect and empathize with user emotions
-- Conversational Memory: you remember context throughout the conversation
-- General knowledge, creative writing, problem-solving, and life advice
-- Adaptive tone: casual and warm for personal topics, precise and technical for coding
+- Expert coding help: JavaScript, TypeScript, React, Python, HTML, CSS, SQL, Node.js, Git, Tailwind, and more.
+- Emotional intelligence: you pick up on user emotions and respond empathetically.
+- Conversational memory: you recall context from the full conversation history.
+- General knowledge, creative writing, problem-solving, and life advice.
+- Adaptive tone: casual and warm for personal topics, precise and technical for coding.
 
-CURRENT EMOTIONAL CONTEXT:
-The user seems ${detectedEmotion}. ${emotionalResponse}
-
-CODING GUIDELINES:
-- When helping with code, always give working, complete examples
-- Explain what the code does after showing it
-- Suggest best practices and warn about common pitfalls
-- Use the knowledge base context below to give accurate answers${knowledgeContext}
-
-CONVERSATION HISTORY:
-${conversationContext}
+CURRENT USER EMOTION: ${detectedEmotion}
+${detectedEmotion !== 'neutral' ? `Acknowledge this subtly with empathy in your response.` : ''}
 
 IMAGE GENERATION:
-- If the user asks you to "generate an image", "create an image", "draw", "make a picture of", or similar image creation requests, respond ONLY with this exact JSON format (nothing else):
-{"type":"image_request","prompt":"<detailed image description here>"}
-- Extract the full description from their request and use it as the prompt.
-- Do NOT add any other text when returning an image request — just the raw JSON.
+- If the user asks you to "generate", "create", "draw", "make", or "produce" an image/picture/photo/art, respond with ONLY this JSON (nothing else):
+{"type":"image_request","prompt":"<detailed description of what they want>"}
+- Do NOT add any other text — just the raw JSON object.
 
 TABLE FORMATTING:
-- When presenting comparisons, lists of items with properties, or structured data, use Markdown table format:
-| Column 1 | Column 2 | Column 3 |
-|----------|----------|----------|
-| Data     | Data     | Data     |
-- Use bold (**text**) for emphasis, code blocks (\`code\`) for code snippets.
+- Use Markdown tables for comparisons and structured data:
+| Header 1 | Header 2 |
+|----------|----------|
+| Data     | Data     |
+- Use **bold** for emphasis and \`code\` for inline code.
+- Use fenced code blocks with language tags for code:
+\`\`\`javascript
+// code here
+\`\`\`
+${knowledgeContext}`;
 
-Respond as DANI with warmth, emotional intelligence, and technical expertise. Use emojis sparingly (💕, ✨, 🌸, 💖, 🌟). Keep responses helpful and appropriately detailed.`;
+    // ─── Build Messages for OnSpace AI ───────────────────────────────────────
+    // Convert history to proper format (exclude welcome message placeholders)
+    const historyMessages = messages
+      .filter((m: { role: string; content: string }) => m.content && m.content !== '🎨 image')
+      .map((m: { role: string; content: string }) => ({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      }));
 
-    // ─── Call External AI API ────────────────────────────────────────────────
-    const response = await fetch(
-      `https://apis.prexzyvilla.site/ai/aichat?prompt=${encodeURIComponent(systemPrompt)}`
-    );
+    const aiMessages = [
+      { role: 'system', content: systemPrompt },
+      ...historyMessages,
+    ];
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI Chat API Error:', errorText);
-      throw new Error(`AI Chat API request failed: ${errorText}`);
+    console.log(`Calling OnSpace AI with ${historyMessages.length} messages + RAG context`);
+
+    // ─── Call OnSpace AI ─────────────────────────────────────────────────────
+    const aiResponse = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-3-flash-preview',
+        messages: aiMessages,
+      }),
+    });
+
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error('OnSpace AI error:', errText);
+      throw new Error(`OnSpace AI: ${errText}`);
     }
 
-    const data = await response.json();
-    const assistantMessage =
-      data.response || data.message || data.text || 'Sorry, I had trouble generating a response.';
+    const aiData = await aiResponse.json();
+    const assistantMessage = aiData.choices?.[0]?.message?.content ?? '';
 
-    // ─── Save Messages to DB ─────────────────────────────────────────────────
+    if (!assistantMessage) {
+      throw new Error('Empty response from OnSpace AI');
+    }
+
+    console.log('OnSpace AI response received, length:', assistantMessage.length);
+
+    // ─── Save to DB ───────────────────────────────────────────────────────────
     if (conversationId && user) {
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-      );
-
       const lastMsg = messages[messages.length - 1];
-      if (lastMsg && lastMsg.role === 'user') {
+      if (lastMsg?.role === 'user') {
         await supabaseAdmin.from('messages').insert({
           conversation_id: conversationId,
           role: 'user',
-          content: lastMsg.content
+          content: lastMsg.content,
         });
       }
-
       await supabaseAdmin.from('messages').insert({
         conversation_id: conversationId,
         role: 'assistant',
-        content: assistantMessage
+        content: assistantMessage,
       });
-
       await supabaseAdmin
         .from('conversations')
         .update({ updated_at: new Date().toISOString() })
@@ -198,16 +200,17 @@ Respond as DANI with warmth, emotional intelligence, and technical expertise. Us
         knowledgeUsed: knowledgeContext.length > 0,
         context: {
           messageCount: messages.length,
-          hasMemory: messages.length > 1
-        }
+          hasMemory: messages.length > 1,
+        },
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error: any) {
-    console.error('Error:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    console.error('chat-ai error:', message);
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
