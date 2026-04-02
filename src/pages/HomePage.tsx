@@ -16,7 +16,7 @@ export default function HomePage() {
       setTimeout(() => setShowTermsError(false), 3000);
       return;
     }
-    navigate('/chat');
+    navigate('/auth');
   };
 
   const features = [
@@ -182,7 +182,7 @@ export default function HomePage() {
               Created by <span className="text-pink-600 font-semibold">Damini Codesphere</span>
             </p>
             <p className="mt-1">
-              Sponsored by <span className="text-purple-600 font-semibold">Daniella</span>
+              Inspired by <span className="text-purple-600 font-semibold">Daniella</span>
             </p>
             <p className="mt-4 text-sm">© 2026 DANI AI. All rights reserved.</p>
           </div>

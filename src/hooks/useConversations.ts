@@ -6,12 +6,15 @@ export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchConversations();
-  }, []);
-
   const fetchConversations = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('conversations')
         .select('*')
@@ -26,39 +29,42 @@ export function useConversations() {
     }
   };
 
+  useEffect(() => {
+    fetchConversations();
+
+    // Re-fetch when auth state changes (e.g. login)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+        fetchConversations();
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const createConversation = async (title: string) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error('Not authenticated');
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .from('conversations')
-        .insert({ user_id: user.id, title })
-        .select()
-        .single();
+    const { data, error } = await supabase
+      .from('conversations')
+      .insert({ user_id: user.id, title })
+      .select()
+      .single();
 
-      if (error) throw error;
-      setConversations(prev => [data, ...prev]);
-      return data;
-    } catch (error) {
-      console.error('Error creating conversation:', error);
-      throw error;
-    }
+    if (error) throw error;
+    setConversations(prev => [data, ...prev]);
+    return data;
   };
 
   const deleteConversation = async (id: string) => {
-    try {
-      const { error } = await supabase
-        .from('conversations')
-        .delete()
-        .eq('id', id);
+    const { error } = await supabase
+      .from('conversations')
+      .delete()
+      .eq('id', id);
 
-      if (error) throw error;
-      setConversations(prev => prev.filter(c => c.id !== id));
-    } catch (error) {
-      console.error('Error deleting conversation:', error);
-      throw error;
-    }
+    if (error) throw error;
+    setConversations(prev => prev.filter(c => c.id !== id));
   };
 
   return {
@@ -66,6 +72,6 @@ export function useConversations() {
     loading,
     createConversation,
     deleteConversation,
-    refreshConversations: fetchConversations
+    refreshConversations: fetchConversations,
   };
 }

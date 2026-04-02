@@ -3,125 +3,103 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { corsHeaders } from '../_shared/cors.ts';
 
 serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { password } = await req.json();
-    console.log('Signup request received');
+    const { email, username, password } = await req.json();
+    console.log('Signup request for email:', email);
 
-    if (!password || password.length < 6) {
-      console.log('Password validation failed');
+    if (!email || !password || !username) {
+      return new Response(
+        JSON.stringify({ error: 'Email, username, and password are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    if (password.length < 6) {
       return new Response(
         JSON.stringify({ error: 'Password must be at least 6 characters' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Generate unique email using a valid domain
-    const timestamp = Date.now();
-    const random = Math.random().toString(36).substring(2, 15);
-    const email = `dani_${timestamp}_${random}@example.com`;
-    console.log('Generated email:', email);
-
-    // Create client with anon key for standard signup
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     );
 
-    console.log('Creating user account...');
-    
-    // Use service role to create and auto-confirm user via SQL
     const supabaseAdmin = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    // First check if user already exists
-    const { data: existingUsers } = await supabaseAdmin
-      .from('auth.users')
-      .select('email')
-      .eq('email', email)
-      .limit(1);
-
-    if (existingUsers && existingUsers.length > 0) {
-      console.log('User already exists, attempting to sign in...');
-      const { data: existingSession, error: existingSignInError } = await supabaseClient.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (!existingSignInError && existingSession) {
-        return new Response(
-          JSON.stringify({
-            session: existingSession.session,
-            user: existingSession.user
-          }),
-          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-    }
-
-    // Create new user with standard signup
+    // Create user via standard signup
+    console.log('Creating user...');
     const { data: signUpData, error: signUpError } = await supabaseClient.auth.signUp({
-      email,
+      email: email.trim().toLowerCase(),
       password,
       options: {
-        data: {
-          username: email.split('@')[0],
-        }
+        data: { username: username.trim() }
       }
     });
 
     if (signUpError) {
-      console.error('Signup error:', signUpError);
+      console.error('Signup error:', signUpError.message);
+      // Surface friendly messages
+      if (signUpError.message.toLowerCase().includes('already registered')) {
+        return new Response(
+          JSON.stringify({ error: 'This email is already registered. Please log in instead.' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
       return new Response(
         JSON.stringify({ error: signUpError.message }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('User created, auto-confirming email via SQL...');
-    
-    // Use service role to confirm email directly via SQL
-    const { error: confirmError } = await supabaseAdmin.rpc('confirm_user_email', { 
-      user_email: email 
+    if (!signUpData.user) {
+      return new Response(
+        JSON.stringify({ error: 'Failed to create account. Please try again.' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Auto-confirm email so user can log in immediately (no confirmation email)
+    console.log('Auto-confirming email...');
+    const { error: confirmError } = await supabaseAdmin.rpc('confirm_user_email', {
+      user_email: email.trim().toLowerCase()
     });
 
     if (confirmError) {
-      console.error('Email confirmation error:', confirmError);
-      // Continue anyway, try to sign in
+      console.error('Email confirmation error (non-fatal):', confirmError.message);
     } else {
       console.log('Email confirmed successfully');
     }
 
-    // Wait a moment for the confirmation to process
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // Brief wait for confirmation to propagate
+    await new Promise(r => setTimeout(r, 300));
 
-    // Now sign in with the confirmed account
-    console.log('Signing in with confirmed account...');
+    // Sign in with confirmed credentials
+    console.log('Signing in...');
     const { data: sessionData, error: signInError } = await supabaseClient.auth.signInWithPassword({
-      email,
+      email: email.trim().toLowerCase(),
       password
     });
 
     if (signInError) {
-      console.error('Sign in error:', signInError);
+      console.error('Sign in error:', signInError.message);
       return new Response(
-        JSON.stringify({ error: 'Account created but unable to sign in automatically. Please refresh the page.' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: 'Account created! Please log in with your credentials.' }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    console.log('Signup and sign-in completed successfully');
+    console.log('Signup complete — session returned');
     return new Response(
-      JSON.stringify({
-        session: sessionData.session,
-        user: sessionData.user
-      }),
+      JSON.stringify({ session: sessionData.session, user: sessionData.user }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
