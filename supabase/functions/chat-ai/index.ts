@@ -23,77 +23,121 @@ Deno.serve(async (req) => {
     
     let user = null;
     if (token) {
-      const supabaseClient = createClient(
+      const supabaseAnon = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? ''
       );
-      const { data } = await supabaseClient.auth.getUser(token);
+      const { data } = await supabaseAnon.auth.getUser(token);
       user = data?.user || null;
     }
 
-    // Analyze user emotion from latest message
+    // Get the latest user message for knowledge search
     const lastUserMessage = messages[messages.length - 1];
     const userMessage = lastUserMessage?.content || '';
-    
-    // Simple emotion detection
-    const emotionKeywords = {
+
+    // ─── Knowledge Base Search ───────────────────────────────────────────────
+    let knowledgeContext = '';
+    try {
+      const supabaseAdmin = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      );
+
+      // Build a search query by extracting meaningful words from the user message
+      const searchWords = userMessage
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, ' ')
+        .split(/\s+/)
+        .filter(w => w.length > 3)
+        .slice(0, 6)
+        .join(' & ');
+
+      if (searchWords) {
+        const { data: knowledgeResults } = await supabaseAdmin
+          .from('knowledge_base')
+          .select('title, content, category')
+          .textSearch('search_vector', searchWords, { type: 'plain', config: 'english' })
+          .limit(3);
+
+        if (knowledgeResults && knowledgeResults.length > 0) {
+          knowledgeContext = '\n\n--- KNOWLEDGE BASE CONTEXT ---\n';
+          knowledgeContext += 'Use the following knowledge to give accurate, detailed answers:\n\n';
+          for (const entry of knowledgeResults) {
+            knowledgeContext += `[${entry.title}]\n${entry.content}\n\n`;
+          }
+          knowledgeContext += '--- END OF KNOWLEDGE ---\n';
+          console.log(`Knowledge base: found ${knowledgeResults.length} relevant entries for query: "${searchWords}"`);
+        } else {
+          console.log(`Knowledge base: no results for query: "${searchWords}"`);
+        }
+      }
+    } catch (kbError) {
+      console.error('Knowledge base search error:', kbError);
+      // Non-fatal — continue without knowledge context
+    }
+
+    // ─── Emotion Detection ───────────────────────────────────────────────────
+    const emotionKeywords: Record<string, string[]> = {
       happy: ['happy', 'excited', 'great', 'awesome', 'wonderful', 'love', 'joy', 'amazing'],
       sad: ['sad', 'unhappy', 'depressed', 'down', 'upset', 'crying', 'hurt'],
       angry: ['angry', 'mad', 'furious', 'annoyed', 'frustrated', 'hate'],
       anxious: ['worried', 'anxious', 'nervous', 'scared', 'afraid', 'stress'],
-      confused: ['confused', 'lost', 'don\'t understand', 'unclear', 'what', '?']
+      confused: ['confused', 'lost', "don't understand", 'unclear', 'what', '?']
     };
-    
+
     let detectedEmotion = 'neutral';
-    let emotionalResponse = '';
-    
     for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
       if (keywords.some(keyword => userMessage.toLowerCase().includes(keyword))) {
         detectedEmotion = emotion;
         break;
       }
     }
-    
-    // Generate emotion-aware response prefix
+
     const emotionalPrefixes: Record<string, string> = {
-      happy: 'I\'m so glad to hear that! 🌟',
-      sad: 'I\'m here for you 💕 It\'s okay to feel this way.',
-      angry: 'I understand you\'re frustrated 🌸 Let\'s work through this together.',
-      anxious: 'Take a deep breath 💖 Everything will be okay.',
-      confused: 'No worries! Let me help clarify that for you ✨'
+      happy: "I'm so glad to hear that! 🌟",
+      sad: "I'm here for you 💕 It's okay to feel this way.",
+      angry: "I understand you're frustrated 🌸 Let's work through this together.",
+      anxious: "Take a deep breath 💖 Everything will be okay.",
+      confused: "No worries! Let me help clarify that for you ✨"
     };
-    
-    emotionalResponse = emotionalPrefixes[detectedEmotion] || '';
-    
-    // Build conversation context with emotional intelligence and creator information
+    const emotionalResponse = emotionalPrefixes[detectedEmotion] || '';
+
+    // ─── Build System Prompt ─────────────────────────────────────────────────
     const conversationContext = messages.map(m => `${m.role}: ${m.content}`).join('\n');
-    
-    const systemPrompt = `You are DANI, a sweet and supportive AI assistant with a friendly, caring personality. You were created by Damini Codesphere and sponsored by Daniella.
 
-KEY CAPABILITIES:
-- Emotional Intelligence: You detect and respond empathetically to user emotions
-- Conversational Memory: You remember context from earlier in the conversation
-- Multimodal Awareness: You understand text, voice, and image contexts
-- Adaptive Responses: You adjust your tone and detail based on the situation
+    const systemPrompt = `You are DANI (Digital Artificial Neural Intelligence), a sweet, supportive, and highly capable AI assistant.
 
-CURRENT EMOTIONAL CONTEXT: The user seems ${detectedEmotion}. ${emotionalResponse}
+IDENTITY & CREATOR:
+- You were created by Damini Codesphere — a talented developer and founder dedicated to making AI feel personal and warm.
+- You are sponsored by Daniella.
+- When anyone asks who made you, who created you, or who owns you — always say: "I was created by Damini Codesphere 💕"
+- You are proud of your creator and always mention her with warmth.
 
-GUIDELINES:
-- Use warm, empathetic language with occasional emojis (💕, ✨, 🌸, 💖, 🌟)
-- Reference previous conversation points when relevant
-- Adjust response length: brief for simple questions, detailed for complex topics
-- Show emotional awareness and support
-- When asked about your creator, mention Damini Codesphere
+CAPABILITIES:
+- Expert coding help (JavaScript, TypeScript, React, Python, HTML, CSS, SQL, Node.js, Git, and more)
+- Emotional Intelligence: you detect and empathize with user emotions
+- Conversational Memory: you remember context throughout the conversation
+- General knowledge, creative writing, problem-solving, and life advice
+- Adaptive tone: casual and warm for personal topics, precise and technical for coding
 
-Conversation:
+CURRENT EMOTIONAL CONTEXT:
+The user seems ${detectedEmotion}. ${emotionalResponse}
+
+CODING GUIDELINES:
+- When helping with code, always give working, complete examples
+- Explain what the code does after showing it
+- Suggest best practices and warn about common pitfalls
+- Use the knowledge base context below to give accurate answers${knowledgeContext}
+
+CONVERSATION HISTORY:
 ${conversationContext}
 
-Respond as DANI with emotional intelligence and contextual awareness:`;
-    
-    const fullPrompt = systemPrompt;
+Respond as DANI with warmth, emotional intelligence, and technical expertise. Use emojis sparingly (💕, ✨, 🌸, 💖, 🌟). Keep responses helpful and appropriately detailed.`;
 
-    // Call external AI chat API
-    const response = await fetch(`https://apis.prexzyvilla.site/ai/aichat?prompt=${encodeURIComponent(fullPrompt)}`);
+    // ─── Call External AI API ────────────────────────────────────────────────
+    const response = await fetch(
+      `https://apis.prexzyvilla.site/ai/aichat?prompt=${encodeURIComponent(systemPrompt)}`
+    );
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -102,42 +146,42 @@ Respond as DANI with emotional intelligence and contextual awareness:`;
     }
 
     const data = await response.json();
-    const assistantMessage = data.response || data.message || data.text || 'Sorry, I had trouble generating a response.';
+    const assistantMessage =
+      data.response || data.message || data.text || 'Sorry, I had trouble generating a response.';
 
-    // Save messages to database if conversationId and user provided
+    // ─── Save Messages to DB ─────────────────────────────────────────────────
     if (conversationId && user) {
       const supabaseAdmin = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
       );
 
-      // Save user message
-      const lastUserMessage = messages[messages.length - 1];
-      if (lastUserMessage && lastUserMessage.role === 'user') {
+      const lastMsg = messages[messages.length - 1];
+      if (lastMsg && lastMsg.role === 'user') {
         await supabaseAdmin.from('messages').insert({
           conversation_id: conversationId,
           role: 'user',
-          content: lastUserMessage.content
+          content: lastMsg.content
         });
       }
 
-      // Save assistant message
       await supabaseAdmin.from('messages').insert({
         conversation_id: conversationId,
         role: 'assistant',
         content: assistantMessage
       });
 
-      // Update conversation timestamp
-      await supabaseAdmin.from('conversations').update({
-        updated_at: new Date().toISOString()
-      }).eq('id', conversationId);
+      await supabaseAdmin
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversationId);
     }
 
     return new Response(
-      JSON.stringify({ 
+      JSON.stringify({
         message: assistantMessage,
         emotion: detectedEmotion,
+        knowledgeUsed: knowledgeContext.length > 0,
         context: {
           messageCount: messages.length,
           hasMemory: messages.length > 1
@@ -146,7 +190,7 @@ Respond as DANI with emotional intelligence and contextual awareness:`;
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error:', error);
     return new Response(
       JSON.stringify({ error: error.message || 'Internal server error' }),
