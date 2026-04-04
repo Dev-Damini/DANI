@@ -55,7 +55,7 @@ export default function ChatPage() {
                     ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
                     : 'text-gray-600 hover:text-gray-800'
                 }`}>
-                {tab === 'website' ? <><Code className="w-4 h-4 inline mr-1" />Create</> : tab.charAt(0).toUpperCase() + tab.slice(1)}
+                {tab === 'website' ? <><Sparkles className="w-4 h-4 inline mr-1" />Vibe Code</> : tab.charAt(0).toUpperCase() + tab.slice(1)}
               </button>
             ))}
           </div>

@@ -1,13 +1,26 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
+// Model mapping
+const MODEL_MAP: Record<string, string> = {
+  'dani-1.15':   'google/gemini-2.5-flash-lite',
+  'primis-1.20': 'google/gemini-3-flash-preview',
+  'lumi-5.3':    'google/gemini-3-pro-preview',
+};
+
+const MODEL_COST: Record<string, number> = {
+  'dani-1.15':   10,
+  'primis-1.20': 30,
+  'lumi-5.3':    75,
+};
+
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { description, techStack } = await req.json();
+    const { description, techStack, model = 'dani-1.15' } = await req.json();
 
     if (!description || !techStack || techStack.length === 0) {
       return new Response(
@@ -16,516 +29,194 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log('Generating website with:', { description, techStack });
+    const apiKey  = Deno.env.get('ONSPACE_AI_API_KEY');
+    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
 
-    // Build prompt for AI to generate website code
+    if (!apiKey || !baseUrl) throw new Error('OnSpace AI not configured');
+
+    // ── Auth + credit deduction ───────────────────────────────────────────────
+    const authHeader = req.headers.get('Authorization');
+    const token = authHeader?.replace('Bearer ', '');
+    let userId: string | null = null;
+
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
+
+    if (token) {
+      const supabaseAnon = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+      );
+      const { data } = await supabaseAnon.auth.getUser(token);
+      userId = data?.user?.id ?? null;
+    }
+
+    const cost = MODEL_COST[model] ?? 10;
+
+    if (userId) {
+      // Ensure credits row exists (upsert with signup bonus)
+      const { data: credits } = await supabaseAdmin
+        .from('user_credits')
+        .select('balance')
+        .eq('user_id', userId)
+        .single();
+
+      if (!credits) {
+        // First time — give signup bonus
+        await supabaseAdmin.from('user_credits').insert({
+          user_id: userId,
+          balance: 100,
+          total_earned: 100,
+          total_spent: 0,
+        });
+        await supabaseAdmin.from('credit_transactions').insert({
+          user_id: userId,
+          amount: 100,
+          type: 'signup_bonus',
+          description: 'Welcome bonus — 100 free coins',
+        });
+      }
+
+      const balance = credits?.balance ?? 100;
+      if (balance < cost) {
+        return new Response(
+          JSON.stringify({ error: `Insufficient coins. Need ${cost}, have ${balance}. Top up in Plans!`, code: 'insufficient_credits' }),
+          { status: 402, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // Deduct coins
+      await supabaseAdmin.from('user_credits')
+        .update({ balance: balance - cost, total_spent: (await supabaseAdmin.from('user_credits').select('total_spent').eq('user_id', userId).single()).data?.total_spent ?? 0 + cost, updated_at: new Date().toISOString() })
+        .eq('user_id', userId);
+
+      await supabaseAdmin.from('credit_transactions').insert({
+        user_id: userId,
+        amount: -cost,
+        type: 'generation',
+        description: `Website generated with ${model} (${cost} coins)`,
+      });
+
+      console.log(`Deducted ${cost} coins from user ${userId}, model: ${model}`);
+    }
+
+    // ── Build prompt ──────────────────────────────────────────────────────────
+    const aiModel = MODEL_MAP[model] ?? MODEL_MAP['dani-1.15'];
     const techList = techStack.join(', ');
     const includeReact = techStack.includes('react');
     const includeTypeScript = techStack.includes('typescript');
 
-    const prompt = `You are DANI, a website creation assistant. Create a complete, production-ready website based on this description:
+    const systemPrompt = `You are an elite vibe-coding AI that generates complete, production-ready websites. Output ONLY valid JSON — no markdown fences, no explanations, nothing else.`;
 
-${description}
+    const userPrompt = `Create a complete, modern website for this description:
 
-TECHNOLOGIES TO USE: ${techList}
+"${description}"
 
-REQUIREMENTS:
-${includeReact ? `- Use React with functional components and hooks
-- Use modern React patterns (useState, useEffect, etc.)
-- Create component-based architecture` : '- Create vanilla HTML/CSS/JavaScript website'}
-${includeTypeScript ? '- Use TypeScript with proper type definitions' : '- Use JavaScript (ES6+)'}
-- Use modern, responsive CSS (flexbox/grid)
-- Include smooth animations and transitions
-- Make it mobile-friendly
-- Use a pink and purple color scheme (DANI's theme)
-- Include comments in the code
-- Create clean, well-structured code
+Technologies: ${techList}
+${includeReact ? 'Framework: React with hooks, functional components' : 'Vanilla HTML/CSS/JS'}
+${includeTypeScript ? 'Language: TypeScript' : 'Language: JavaScript'}
 
-STRUCTURE:
-${includeReact ? `
-- index.html (basic HTML shell)
-- App.${includeTypeScript ? 'tsx' : 'jsx'} (main React component)
-- components/ folder with reusable components
-- styles.css (global styles)
-- package.json (React dependencies)
-` : `
-- index.html (main page)
-- styles.css (stylesheet)
-- script.js (JavaScript functionality)
-- Additional HTML pages if needed
-`}
+Requirements:
+- Beautiful, modern UI with smooth animations
+- Fully responsive (mobile-first)
+- Pink and purple gradient color scheme
+- Well-structured, commented code
+- Production-ready quality
+- Use glassmorphism where appropriate
+${includeReact ? '- Separate component files\n- Modern React patterns' : '- All interactivity in script.js'}
 
-Generate COMPLETE, WORKING code for each file. Return ONLY a JSON object with this exact structure:
+Return ONLY this JSON structure (no other text):
 {
-  "projectName": "website-name",
+  "projectName": "kebab-case-name",
   "files": [
-    {"path": "index.html", "content": "...complete file content..."},
-    {"path": "styles.css", "content": "...complete file content..."},
-    {"path": "script.js", "content": "...complete file content..."}
+    {"path": "index.html", "content": "...complete file..."},
+    {"path": "styles.css", "content": "...complete file..."},
+    {"path": "script.js", "content": "...complete file..."}
   ]
-}
+}`;
 
-DO NOT include any explanatory text, only the JSON object.`;
+    console.log(`Generating with model: ${aiModel} (${model})`);
 
-    // Call AI API
-    const response = await fetch(`https://apis.prexzyvilla.site/ai/aichat?prompt=${encodeURIComponent(prompt)}`);
+    const aiResponse = await fetch(`${baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: aiModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user',   content: userPrompt },
+        ],
+        temperature: 0.7,
+      }),
+    });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI API Error:', errorText);
-      throw new Error(`AI API request failed: ${errorText}`);
+    if (!aiResponse.ok) {
+      const errText = await aiResponse.text();
+      console.error('OnSpace AI error:', errText);
+      throw new Error(`AI: ${errText}`);
     }
 
-    const data = await response.json();
-    let aiResponse = data.response || data.message || data.text || '';
+    const aiData   = await aiResponse.json();
+    let aiText     = aiData.choices?.[0]?.message?.content ?? '';
 
-    console.log('AI Response received:', aiResponse.substring(0, 200));
+    console.log('AI response length:', aiText.length);
 
-    // Try to extract JSON from the response
+    // Strip markdown fences if present
+    aiText = aiText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+
     let websiteData;
-    
-    // Look for JSON in the response
-    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      try {
-        websiteData = JSON.parse(jsonMatch[0]);
-      } catch (parseError) {
-        console.error('JSON parse error:', parseError);
-        throw new Error('Failed to parse AI response');
-      }
+    try {
+      const jsonMatch = aiText.match(/\{[\s\S]*\}/);
+      if (jsonMatch) websiteData = JSON.parse(jsonMatch[0]);
+    } catch (e) {
+      console.error('JSON parse error:', e);
     }
 
-    // If AI didn't return proper structure, create a fallback
-    if (!websiteData || !websiteData.files || websiteData.files.length === 0) {
-      console.log('Creating fallback website structure');
+    if (!websiteData?.files?.length) {
+      console.log('Falling back to template generator');
       websiteData = createFallbackWebsite(description, techStack);
     }
 
     return new Response(
-      JSON.stringify(websiteData),
+      JSON.stringify({ ...websiteData, model, cost, newBalance: userId ? ((await supabaseAdmin.from('user_credits').select('balance').eq('user_id', userId).single()).data?.balance ?? 0) : null }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
-  } catch (error) {
-    console.error('Error:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    console.error('create-website error:', message);
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
 
-// Fallback website generator
 function createFallbackWebsite(description: string, techStack: string[]) {
   const includeReact = techStack.includes('react');
-  const includeTypeScript = techStack.includes('typescript');
-  
-  const projectName = 'dani-website';
-  
+
   if (includeReact) {
     return {
-      projectName,
+      projectName: 'my-website',
       files: [
-        {
-          path: 'index.html',
-          content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DANI Created Website</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <div id="root"></div>
-  <script type="module" src="App.${includeTypeScript ? 'tsx' : 'jsx'}"></script>
-</body>
-</html>`
-        },
-        {
-          path: `App.${includeTypeScript ? 'tsx' : 'jsx'}`,
-          content: `import React from 'react';
-import './styles.css';
-
-function App() {
-  return (
-    <div className="app">
-      <header className="header">
-        <h1>Welcome to Your Website</h1>
-        <p>Created by DANI 💕</p>
-      </header>
-      
-      <main className="main">
-        <section className="hero">
-          <h2>Your Description:</h2>
-          <p>${description}</p>
-        </section>
-        
-        <section className="content">
-          <div className="card">
-            <h3>Feature 1</h3>
-            <p>Add your content here</p>
-          </div>
-          <div className="card">
-            <h3>Feature 2</h3>
-            <p>Add your content here</p>
-          </div>
-          <div className="card">
-            <h3>Feature 3</h3>
-            <p>Add your content here</p>
-          </div>
-        </section>
-      </main>
-      
-      <footer className="footer">
-        <p>Made with ❤️ by DANI</p>
-      </footer>
-    </div>
-  );
-}
-
-export default App;`
-        },
-        {
-          path: 'styles.css',
-          content: `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #fce4ec 0%, #f3e5f5 100%);
-  min-height: 100vh;
-}
-
-.app {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
-.header {
-  background: linear-gradient(135deg, #ec4899 0%, #a855f7 100%);
-  color: white;
-  padding: 3rem 2rem;
-  text-align: center;
-  box-shadow: 0 4px 20px rgba(236, 72, 153, 0.3);
-}
-
-.header h1 {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-}
-
-.main {
-  flex: 1;
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-  width: 100%;
-}
-
-.hero {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  padding: 2rem;
-  border-radius: 20px;
-  margin-bottom: 2rem;
-  border: 2px solid rgba(236, 72, 153, 0.2);
-}
-
-.hero h2 {
-  color: #a855f7;
-  margin-bottom: 1rem;
-}
-
-.content {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
-}
-
-.card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  padding: 2rem;
-  border-radius: 20px;
-  border: 2px solid rgba(168, 85, 247, 0.2);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-
-.card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 30px rgba(236, 72, 153, 0.3);
-}
-
-.card h3 {
-  color: #ec4899;
-  margin-bottom: 1rem;
-}
-
-.footer {
-  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
-  color: white;
-  padding: 2rem;
-  text-align: center;
-}
-
-@media (max-width: 768px) {
-  .header h1 {
-    font-size: 2rem;
-  }
-  
-  .content {
-    grid-template-columns: 1fr;
-  }
-}`
-        },
-        {
-          path: 'package.json',
-          content: `{
-  "name": "${projectName}",
-  "version": "1.0.0",
-  "description": "Website created by DANI",
-  "main": "index.html",
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build"
-  },
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0"
-  },
-  "devDependencies": {
-    "@vitejs/plugin-react": "^4.0.0",
-    "vite": "^4.3.0"${includeTypeScript ? ',\n    "typescript": "^5.0.0",\n    "@types/react": "^18.2.0",\n    "@types/react-dom": "^18.2.0"' : ''}
-  }
-}`
-        }
-      ]
-    };
-  } else {
-    return {
-      projectName,
-      files: [
-        {
-          path: 'index.html',
-          content: `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>DANI Created Website</title>
-  <link rel="stylesheet" href="styles.css">
-</head>
-<body>
-  <header class="header">
-    <h1>Welcome to Your Website</h1>
-    <p>Created by DANI 💕</p>
-  </header>
-  
-  <main class="main">
-    <section class="hero">
-      <h2>Your Description:</h2>
-      <p>${description}</p>
-    </section>
-    
-    <section class="content">
-      <div class="card">
-        <h3>Feature 1</h3>
-        <p>Add your content here</p>
-      </div>
-      <div class="card">
-        <h3>Feature 2</h3>
-        <p>Add your content here</p>
-      </div>
-      <div class="card">
-        <h3>Feature 3</h3>
-        <p>Add your content here</p>
-      </div>
-    </section>
-  </main>
-  
-  <footer class="footer">
-    <p>Made with ❤️ by DANI</p>
-  </footer>
-  
-  <script src="script.js"></script>
-</body>
-</html>`
-        },
-        {
-          path: 'styles.css',
-          content: `* {
-  margin: 0;
-  padding: 0;
-  box-sizing: border-box;
-}
-
-body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  background: linear-gradient(135deg, #fce4ec 0%, #f3e5f5 100%);
-  min-height: 100vh;
-}
-
-.header {
-  background: linear-gradient(135deg, #ec4899 0%, #a855f7 100%);
-  color: white;
-  padding: 3rem 2rem;
-  text-align: center;
-  box-shadow: 0 4px 20px rgba(236, 72, 153, 0.3);
-}
-
-.header h1 {
-  font-size: 3rem;
-  margin-bottom: 0.5rem;
-  animation: fadeInDown 0.8s ease;
-}
-
-.main {
-  padding: 2rem;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.hero {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  padding: 2rem;
-  border-radius: 20px;
-  margin-bottom: 2rem;
-  border: 2px solid rgba(236, 72, 153, 0.2);
-  animation: fadeIn 1s ease;
-}
-
-.hero h2 {
-  color: #a855f7;
-  margin-bottom: 1rem;
-}
-
-.content {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 2rem;
-}
-
-.card {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(10px);
-  padding: 2rem;
-  border-radius: 20px;
-  border: 2px solid rgba(168, 85, 247, 0.2);
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-  animation: fadeInUp 0.8s ease;
-}
-
-.card:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 10px 30px rgba(236, 72, 153, 0.3);
-}
-
-.card h3 {
-  color: #ec4899;
-  margin-bottom: 1rem;
-}
-
-.footer {
-  background: linear-gradient(135deg, #a855f7 0%, #ec4899 100%);
-  color: white;
-  padding: 2rem;
-  text-align: center;
-  margin-top: 4rem;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
-@keyframes fadeInDown {
-  from {
-    opacity: 0;
-    transform: translateY(-20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes fadeInUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@media (max-width: 768px) {
-  .header h1 {
-    font-size: 2rem;
-  }
-  
-  .content {
-    grid-template-columns: 1fr;
-  }
-}`
-        },
-        {
-          path: 'script.js',
-          content: `// DANI Created Website
-// Add your JavaScript functionality here
-
-document.addEventListener('DOMContentLoaded', () => {
-  console.log('Website created by DANI is ready! 💕');
-  
-  // Add smooth scroll behavior
-  document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-    anchor.addEventListener('click', function (e) {
-      e.preventDefault();
-      const target = document.querySelector(this.getAttribute('href'));
-      if (target) {
-        target.scrollIntoView({
-          behavior: 'smooth',
-          block: 'start'
-        });
-      }
-    });
-  });
-  
-  // Add card animation on scroll
-  const cards = document.querySelectorAll('.card');
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach((entry, index) => {
-      if (entry.isIntersecting) {
-        setTimeout(() => {
-          entry.target.style.opacity = '1';
-          entry.target.style.transform = 'translateY(0)';
-        }, index * 100);
-      }
-    });
-  }, {
-    threshold: 0.1
-  });
-  
-  cards.forEach(card => {
-    card.style.opacity = '0';
-    card.style.transform = 'translateY(20px)';
-    card.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-    observer.observe(card);
-  });
-});`
-        }
+        { path: 'index.html', content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>My Website</title>\n  <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n  <div id="root"></div>\n  <script type="module" src="App.jsx"></script>\n</body>\n</html>` },
+        { path: 'App.jsx', content: `import React, { useState } from 'react';\nimport './styles.css';\n\nexport default function App() {\n  return (\n    <div className="app">\n      <header className="header">\n        <h1>My Website</h1>\n        <p>Built with DANI ✨</p>\n      </header>\n      <main className="main">\n        <section className="hero">\n          <h2>${description}</h2>\n        </section>\n      </main>\n      <footer><p>Made with 💕 by DANI</p></footer>\n    </div>\n  );\n}` },
+        { path: 'styles.css', content: `*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:linear-gradient(135deg,#fce4ec,#f3e5f5);min-height:100vh}.header{background:linear-gradient(135deg,#ec4899,#a855f7);color:white;padding:3rem 2rem;text-align:center}.main{padding:2rem;max-width:1200px;margin:0 auto}.hero{background:rgba(255,255,255,.7);backdrop-filter:blur(10px);padding:2rem;border-radius:20px;border:2px solid rgba(236,72,153,.2)}footer{background:linear-gradient(135deg,#a855f7,#ec4899);color:white;padding:2rem;text-align:center}` },
       ]
     };
   }
+
+  return {
+    projectName: 'my-website',
+    files: [
+      { path: 'index.html', content: `<!DOCTYPE html>\n<html lang="en">\n<head>\n  <meta charset="UTF-8">\n  <meta name="viewport" content="width=device-width, initial-scale=1.0">\n  <title>My Website</title>\n  <link rel="stylesheet" href="styles.css">\n</head>\n<body>\n  <header class="header"><h1>My Website</h1><p>Built with DANI ✨</p></header>\n  <main class="main"><section class="hero"><h2>${description}</h2></section></main>\n  <footer><p>Made with 💕 by DANI</p></footer>\n  <script src="script.js"></script>\n</body>\n</html>` },
+      { path: 'styles.css', content: `*{margin:0;padding:0;box-sizing:border-box}body{font-family:system-ui,sans-serif;background:linear-gradient(135deg,#fce4ec,#f3e5f5);min-height:100vh}.header{background:linear-gradient(135deg,#ec4899,#a855f7);color:white;padding:3rem 2rem;text-align:center}.main{padding:2rem;max-width:1200px;margin:0 auto}.hero{background:rgba(255,255,255,.7);backdrop-filter:blur(10px);padding:2rem;border-radius:20px;border:2px solid rgba(236,72,153,.2)}footer{background:linear-gradient(135deg,#a855f7,#ec4899);color:white;padding:2rem;text-align:center}` },
+      { path: 'script.js', content: `document.addEventListener('DOMContentLoaded',()=>{ console.log('Website ready! 💕'); });` },
+    ]
+  };
 }
