@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, Code, LogOut, User, Settings } from 'lucide-react';
+import { Home, LogOut, User, Settings, Sparkles } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import daniLogo from '@/assets/dani-logo.png';
 import ChatTab from '@/components/features/ChatTab';
