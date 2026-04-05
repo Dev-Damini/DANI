@@ -279,7 +279,7 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
   };
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data: { user } }) => setIsAuthenticated(!!user));
+    supabase.auth.getSession().then(({ data: { session } }) => setIsAuthenticated(!!session?.user));
     if (!initialized.current) {
       initialized.current = true;
       setLocalMessages([welcomeMessage]);

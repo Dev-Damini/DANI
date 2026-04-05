@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import type { Conversation } from '@/types';
 
 export function useConversations() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [loading, setLoading] = useState(true);
+  const fetchedRef = useRef(false);
 
   const fetchConversations = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
         setConversations([]);
         setLoading(false);
         return;
@@ -30,12 +31,18 @@ export function useConversations() {
   };
 
   useEffect(() => {
-    fetchConversations();
+    // Fetch immediately on mount using existing session (handles refresh)
+    if (!fetchedRef.current) {
+      fetchedRef.current = true;
+      fetchConversations();
+    }
 
-    // Re-fetch when auth state changes (e.g. login)
+    // Re-fetch when auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
-      if (event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         fetchConversations();
+      } else if (event === 'SIGNED_OUT') {
+        setConversations([]);
       }
     });
 
@@ -43,12 +50,12 @@ export function useConversations() {
   }, []);
 
   const createConversation = async (title: string) => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) throw new Error('Not authenticated');
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.user) throw new Error('Not authenticated');
 
     const { data, error } = await supabase
       .from('conversations')
-      .insert({ user_id: user.id, title })
+      .insert({ user_id: session.user.id, title })
       .select()
       .single();
 

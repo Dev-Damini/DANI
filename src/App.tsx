@@ -4,6 +4,8 @@ import ChatPage from '@/pages/ChatPage';
 import AuthPage from '@/pages/AuthPage';
 import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import ProfilePage from '@/pages/ProfilePage';
+import AnalyticsPage from '@/pages/AnalyticsPage';
+import SharedWebsitePage from '@/pages/SharedWebsitePage';
 
 function App() {
   return (
@@ -14,6 +16,8 @@ function App() {
         <Route path="/chat" element={<ChatPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/profile" element={<ProfilePage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
+        <Route path="/share" element={<SharedWebsitePage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
     </BrowserRouter>

@@ -3,13 +3,15 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 // Model mapping
 const MODEL_MAP: Record<string, string> = {
-  'dani-1.15':   'google/gemini-2.5-flash-lite',
+  'dani-5.0':    'google/gemini-2.5-flash-lite',
+  'dani-1.15':   'google/gemini-2.5-flash-lite', // legacy alias
   'primis-1.20': 'google/gemini-3-flash-preview',
   'lumi-5.3':    'google/gemini-3-pro-preview',
 };
 
 const MODEL_COST: Record<string, number> = {
-  'dani-1.15':   10,
+  'dani-5.0':    10,
+  'dani-1.15':   10, // legacy alias
   'primis-1.20': 30,
   'lumi-5.3':    75,
 };
