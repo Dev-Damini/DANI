@@ -76,21 +76,28 @@ Deno.serve(async (req) => {
       console.error('RAG search error (non-fatal):', ragError);
     }
 
-    // ─── Emotion Detection ───────────────────────────────────────────────────
-    const emotionKeywords: Record<string, string[]> = {
-      happy: ['happy', 'excited', 'great', 'awesome', 'wonderful', 'love', 'joy', 'amazing'],
-      sad: ['sad', 'unhappy', 'depressed', 'down', 'upset', 'crying', 'hurt'],
-      angry: ['angry', 'mad', 'furious', 'annoyed', 'frustrated', 'hate'],
-      anxious: ['worried', 'anxious', 'nervous', 'scared', 'afraid', 'stress'],
-      confused: ['confused', 'lost', "don't understand", 'unclear', '?']
-    };
+    // ─── Emotion Detection (improved) ────────────────────────────────────────
+    const msgLower = userMessage.toLowerCase();
+
+    const emotionPatterns: [string, RegExp][] = [
+      ['happy',   /\b(happy|happiness|excited|thrilled|joy|joyful|glad|awesome|wonderful|amazing|love|fantastic|blessed|grateful|cheerful|ecstatic|delighted|stoked|pumped|yay|woohoo)\b/i],
+      ['sad',     /\b(sad|unhappy|depressed|depression|upset|cry|crying|tears|heartbroken|lonely|miss|grief|hopeless|worthless|empty|numb|broken|devastated|miserable|gloomy)\b/i],
+      ['angry',   /\b(angry|anger|mad|furious|frustrated|frustrating|annoyed|irritated|hate|rage|livid|pissed|outraged|fed up|sick of|tired of)\b/i],
+      ['anxious', /\b(worried|worry|anxious|anxiety|nervous|scared|fear|afraid|panic|stress|stressed|overwhelmed|overthinking|dread|uneasy|insecure|on edge|apprehensive|tense)\b/i],
+      ['excited', /\b(can.?t wait|looking forward|thrilled|pumped|hyped|incredible|wow|omg|no way|mind.?blown)\b/i],
+      ['confused',/\b(confused|confusing|lost|unclear|don.?t understand|don.?t get it|not sure|can you explain|help me understand)\b/i],
+    ];
 
     let detectedEmotion = 'neutral';
-    for (const [emotion, keywords] of Object.entries(emotionKeywords)) {
-      if (keywords.some(kw => userMessage.toLowerCase().includes(kw))) {
-        detectedEmotion = emotion;
-        break;
-      }
+    for (const [emotion, pattern] of emotionPatterns) {
+      if (pattern.test(userMessage)) { detectedEmotion = emotion; break; }
+    }
+    // Phrase fallbacks
+    if (detectedEmotion === 'neutral') {
+      if (/not (ok|okay|fine|good|great|well)/i.test(msgLower)) detectedEmotion = 'sad';
+      if (/feeling (bad|terrible|awful|horrible)/i.test(msgLower)) detectedEmotion = 'sad';
+      if (/i hate/i.test(msgLower)) detectedEmotion = 'angry';
+      if (/can.?t take (it|this)/i.test(msgLower)) detectedEmotion = 'anxious';
     }
 
     // ─── Response Style ──────────────────────────────────────────────────────

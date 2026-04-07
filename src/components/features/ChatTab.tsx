@@ -252,6 +252,44 @@ function ImageMessage({ msg }: { msg: ChatMessage }) {
   );
 }
 
+// ─── Conversation date grouping ──────────────────────────────────────────────
+function groupConversationsByDate(convs: import('@/types').Conversation[]) {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+  const sevenAgo = new Date(today); sevenAgo.setDate(today.getDate() - 7);
+  const thirtyAgo = new Date(today); thirtyAgo.setDate(today.getDate() - 30);
+
+  const groups: { label: string; items: import('@/types').Conversation[] }[] = [
+    { label: 'Today', items: [] },
+    { label: 'Yesterday', items: [] },
+    { label: 'Previous 7 Days', items: [] },
+    { label: 'Previous 30 Days', items: [] },
+    { label: 'Older', items: [] },
+  ];
+
+  convs.forEach(c => {
+    const d = new Date(c.updated_at);
+    if (d >= today) groups[0].items.push(c);
+    else if (d >= yesterday) groups[1].items.push(c);
+    else if (d >= sevenAgo) groups[2].items.push(c);
+    else if (d >= thirtyAgo) groups[3].items.push(c);
+    else groups[4].items.push(c);
+  });
+
+  return groups.filter(g => g.items.length > 0);
+}
+
+function formatConvTime(dateStr: string): string {
+  const d = new Date(dateStr);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  if (diff < 60_000) return 'Just now';
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
 // ─── Main ChatTab ─────────────────────────────────────────────────────────────
 export default function ChatTab({ responseStyle = 'educational' }: { responseStyle?: string }) {
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
@@ -315,14 +353,7 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
 
   const startNewConversation = async () => {
     setNavOpen(false);
-    if (isAuthenticated) {
-      try {
-        const conversation = await createConversation(`Chat ${new Date().toLocaleDateString()}`);
-        setCurrentConversationId(conversation.id);
-      } catch (error) { console.error('Error starting conversation:', error); }
-    } else {
-      setCurrentConversationId(null);
-    }
+    setCurrentConversationId(null);
     setLocalMessages([welcomeMessage]);
     setCurrentEmotion('neutral');
     setMessageCount(0);
@@ -384,10 +415,21 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
     setInput('');
     setIsTyping(true);
 
+    // Auto-create conversation on first real message
+    let convId = currentConversationId;
+    if (!convId && isAuthenticated) {
+      try {
+        const title = userInput.slice(0, 50) + (userInput.length > 50 ? '...' : '');
+        const conv = await createConversation(title);
+        convId = conv.id;
+        setCurrentConversationId(convId);
+      } catch (e) { console.error('Conv create error:', e); }
+    }
+
     try {
       const history = [...messages, userMessage].map(m => ({ role: m.role, content: m.content }));
       const { data, error } = await supabase.functions.invoke('chat-ai', {
-        body: { messages: history, conversationId: currentConversationId, responseStyle }
+        body: { messages: history, conversationId: convId, responseStyle }
       });
 
       if (error) {
@@ -400,6 +442,13 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
 
       if (data.emotion) setCurrentEmotion(data.emotion);
       if (data.context?.messageCount) setMessageCount(data.context.messageCount);
+
+      // Update conversation title after first exchange if it's a new one
+      if (convId && isAuthenticated && messages.filter(m => m.role === 'user').length === 0) {
+        try {
+          await supabase.from('conversations').update({ title: userInput.slice(0, 60) }).eq('id', convId);
+        } catch { /* non-fatal */ }
+      }
 
       let aiText: string = data.message || '';
       let imageRequest: { prompt: string } | null = null;
@@ -533,28 +582,33 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
               {historySearch ? 'No chats match your search' : 'No chats yet'}
             </div>
           ) : (
-            filteredConversations.map(conv => (
-              <div
-                key={conv.id}
-                onClick={() => loadConversation(conv.id)}
-                className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
-                  currentConversationId === conv.id
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
-                    : 'hover:bg-white/70 text-gray-700'
-                }`}
-              >
-                <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">{conv.title}</p>
-                  <p className={`text-xs truncate ${currentConversationId === conv.id ? 'text-pink-100' : 'text-gray-400'}`}>
-                    {new Date(conv.updated_at).toLocaleDateString()}
-                  </p>
-                </div>
-                <button
-                  onClick={e => handleDeleteConversation(conv.id, e)}
-                  className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/20 rounded-lg transition-all ml-1 flex-shrink-0"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
+                groupConversationsByDate(filteredConversations).map(group => (
+              <div key={group.label}>
+                <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-1 mt-2">{group.label}</p>
+                {group.items.map(conv => (
+                  <div
+                    key={conv.id}
+                    onClick={() => loadConversation(conv.id)}
+                    className={`group flex items-center justify-between px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                      currentConversationId === conv.id
+                        ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
+                        : 'hover:bg-white/70 text-gray-700'
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-medium text-sm truncate">{conv.title}</p>
+                      <p className={`text-xs truncate ${currentConversationId === conv.id ? 'text-pink-100' : 'text-gray-400'}`}>
+                        {formatConvTime(conv.updated_at)}
+                      </p>
+                    </div>
+                    <button
+                      onClick={e => handleDeleteConversation(conv.id, e)}
+                      className="opacity-0 group-hover:opacity-100 p-1.5 hover:bg-white/20 rounded-lg transition-all ml-1 flex-shrink-0"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
               </div>
             ))
           )}

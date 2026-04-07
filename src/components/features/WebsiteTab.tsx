@@ -2,8 +2,8 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles, Globe, FileCode, Loader2, AlertCircle, Eye, Code2,
   Zap, Cpu, Crown, X, Copy, Check, Plus, Trash2, Download,
-  Share2, ChevronRight, SendHorizonal, Coins, CheckCircle,
-  Menu, ArrowLeft, ChevronLeft, Wand2,
+  Share2, ChevronRight, Coins, CheckCircle,
+  Menu, ArrowLeft, Wand2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
@@ -45,7 +45,7 @@ const TECH_PRESETS = [
   {
     id: 'vanilla',
     label: 'HTML · CSS · JavaScript',
-    short: 'Vanilla',
+    short: 'HTML / CSS / JS',
     emoji: '🌐',
     desc: 'Pure, lightweight, universal',
     color: 'from-orange-400 to-pink-500',
@@ -138,6 +138,87 @@ function groupProjectsByDate(projects: Project[]) {
   });
 
   return groups.filter(g => g.items.length > 0);
+}
+
+// ─── TypeScript Stripper (for CDN React preview) ──────────────────────────────
+function stripTypeScript(code: string): string {
+  return code
+    .replace(/^import\s+type\s+.*?;?\s*$/gm, '')
+    .replace(/^interface\s+\w+[^{]*\{[^}]*\}/gm, '')
+    .replace(/^type\s+\w+\s*=\s*[^;]+;/gm, '')
+    .replace(/:\s*(string|number|boolean|void|null|undefined|React\.FC|React\.ReactNode|React\.JSX\.Element|JSX\.Element|any|unknown|never)\b(\s*\[\])?/g, '')
+    .replace(/\s+as\s+\w+(\[\])?/g, '')
+    .replace(/:\s*React\.\w+(?:<[^>]*>)?/g, '')
+    .replace(/!(?=[.\[(])/g, '')
+    .replace(/\)\s*:\s*JSX\.Element\s*\{/g, ') {')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// ─── React CDN Preview Builder ────────────────────────────────────────────────
+function buildReactPreviewHTML(
+  files: GeneratedFile[],
+  editedContents: Record<string, string>,
+  preset: TechPresetId
+): string {
+  if (preset === 'vanilla') {
+    const html = files.find(f => f.path === 'index.html');
+    const css = files.find(f => f.path.endsWith('.css'));
+    const js = files.find(f => f.path.endsWith('.js') && !f.path.endsWith('.jsx'));
+    if (!html) return '';
+    let h = editedContents['index.html'] ?? html.content;
+    if (css) h = h.replace('</head>', `<style>${editedContents[css.path] ?? css.content}</style></head>`);
+    if (js) h = h.replace('</body>', `<script>${editedContents[js.path] ?? js.content}</script></body>`);
+    return h;
+  }
+
+  // React (JS or TS) — use CDN + Babel standalone for in-browser transpilation
+  const appFile = files.find(f =>
+    f.path.endsWith('App.tsx') || f.path.endsWith('App.jsx') ||
+    f.path === 'src/App.tsx' || f.path === 'src/App.jsx'
+  );
+  const cssFile = files.find(f => f.path.endsWith('index.css') || f.path.endsWith('.css'));
+  const appContent = editedContents[appFile?.path ?? ''] ?? appFile?.content ?? '';
+  const cssContent = editedContents[cssFile?.path ?? ''] ?? cssFile?.content ?? '';
+
+  // Strip imports and export default, then strip TS if needed
+  let jsxCode = appContent
+    .replace(/^import\s+.*?from\s+['"]react['"]\s*;?\s*$/gm, '')
+    .replace(/^import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
+    .replace(/^export\s+default\s+/gm, '');
+
+  if (preset === 'react-ts') {
+    jsxCode = stripTypeScript(jsxCode);
+  }
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Preview</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; }
+    ${cssContent}
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext, useReducer } = React;
+    ${jsxCode}
+    try {
+      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+    } catch(e) {
+      document.getElementById('root').innerHTML = '<div style="padding:20px;color:red;font-family:monospace">Preview error: ' + e.message + '</div>';
+    }
+  </script>
+</body>
+</html>`;
 }
 
 // ─── Streaming animation hook ─────────────────────────────────────────────────
@@ -381,14 +462,14 @@ export default function WebsiteTab() {
     setShareUrl('');
 
     const phases = [
-      `// ✦ Initializing ${selectedModel.name}...\n`,
-      `// ✦ Reading your prompt...\n// ✦ "${p.slice(0, 60)}${p.length > 60 ? '...' : ''}"\n`,
-      `// ✦ Stack: ${selectedPreset.label}\n`,
-      `// ✦ Planning component architecture...\n`,
-      `// ✦ Writing ${selectedPreset.stack.includes('react') ? 'React components' : 'HTML structure'}...\n`,
-      `// ✦ Adding styles & animations...\n`,
-      `// ✦ Wiring up interactivity...\n`,
-      `// ✦ Final polish & optimization...\n`,
+      `▸ Initializing ${selectedModel.name}...\n`,
+      `▸ Reading prompt...\n  "${p.slice(0, 60)}${p.length > 60 ? '...' : ''}"\n`,
+      `▸ Stack: ${selectedPreset.label}\n`,
+      `▸ Planning architecture...\n`,
+      `▸ Writing ${selectedPreset.stack.includes('react') ? 'React components' : 'HTML structure'}...\n`,
+      `▸ Adding styles & animations...\n`,
+      `▸ Wiring up interactivity...\n`,
+      `▸ Final polish & optimization...\n`,
     ];
 
     let builtPhases = phases[0];
@@ -421,7 +502,7 @@ export default function WebsiteTab() {
       const name: string = data.projectName || 'my-project';
 
       if (files.length > 0) {
-        setGenStreamContent(`// ✅ Done! Your website is ready 🌸\n\n// ${files[0].path}\n\n${files[0].content}`);
+        setGenStreamContent(`▸ Done! Your website is ready ✓\n\n// ${files[0].path}\n\n${files[0].content}`);
       }
 
       setGeneratedFiles(files);
@@ -448,16 +529,11 @@ export default function WebsiteTab() {
     setIsSharing(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const htmlFile = generatedFiles.find(f => f.path === 'index.html');
-      const cssFile = generatedFiles.find(f => f.path.endsWith('.css'));
-      const jsFile = generatedFiles.find(f => f.path.endsWith('.js') && !f.path.endsWith('.jsx'));
-      let html = editedContents['index.html'] ?? htmlFile?.content ?? '';
-      if (cssFile) html = html.replace('</head>', `<style>${editedContents[cssFile.path] ?? cssFile.content}</style></head>`);
-      if (jsFile) html = html.replace('</body>', `<script>${editedContents[jsFile.path] ?? jsFile.content}</script></body>`);
+      const htmlContent = buildReactPreviewHTML(generatedFiles, editedContents, techPreset);
       const { data, error } = await supabase.from('shared_websites').insert({
         user_id: session?.user?.id ?? null,
         project_name: projectName,
-        html_content: html,
+        html_content: htmlContent,
         model,
       }).select('id').single();
       if (error) throw error;
@@ -502,18 +578,11 @@ export default function WebsiteTab() {
     URL.revokeObjectURL(url);
   };
 
-  // Preview HTML
+  // Preview HTML — handles both vanilla and React (CDN mode)
   const previewHTML = useMemo(() => {
     if (!hasFiles) return '';
-    const html = generatedFiles.find(f => f.path === 'index.html');
-    const css = generatedFiles.find(f => f.path.endsWith('.css'));
-    const js = generatedFiles.find(f => f.path.endsWith('.js') && !f.path.endsWith('.jsx'));
-    if (!html) return '';
-    let h = editedContents['index.html'] ?? html.content;
-    if (css) h = h.replace('</head>', `<style>${editedContents[css.path] ?? css.content}</style></head>`);
-    if (js) h = h.replace('</body>', `<script>${editedContents[js.path] ?? js.content}</script></body>`);
-    return h;
-  }, [generatedFiles, editedContents, hasFiles]);
+    return buildReactPreviewHTML(generatedFiles, editedContents, techPreset);
+  }, [generatedFiles, editedContents, hasFiles, techPreset]);
 
   const handlePromptKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (prompt.trim()) setStep(1); }
@@ -636,15 +705,32 @@ export default function WebsiteTab() {
           </div>
           <span className="font-black text-gray-800 text-sm tracking-tight">Vibe Code</span>
           {step === 3 && hasFiles && (
-            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-600 border border-green-200 font-semibold">{projectName}</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-600 border border-green-200 font-semibold">{projectName.replace(/-/g, ' ')}</span>
           )}
         </div>
 
         <div className="flex-1" />
 
+        {/* Tech preset quick switch in top bar (steps 0-2) */}
+        {step < 3 && (
+          <div className="hidden sm:flex items-center gap-1 bg-white/60 rounded-xl p-1 border border-white/40">
+            {TECH_PRESETS.map(t => (
+              <button key={t.id} onClick={() => setTechPreset(t.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
+                  techPreset === t.id
+                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                <span>{t.emoji}</span>
+                <span className="hidden md:inline">{t.short}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Step indicator */}
         {step < 3 && (
-          <div className="hidden sm:flex items-center gap-1.5">
+          <div className="hidden lg:flex items-center gap-1.5">
             {['Prompt', 'Stack', 'Model'].map((label, i) => (
               <div key={i} className="flex items-center gap-1.5">
                 <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all ${
@@ -713,7 +799,7 @@ export default function WebsiteTab() {
                   autoFocus
                   className="w-full bg-transparent text-gray-800 placeholder-gray-400 text-base sm:text-lg leading-relaxed p-6 resize-none focus:outline-none font-medium"
                 />
-                <div className="flex items-center justify-between px-5 pb-5 pt-1 gap-3">
+                <div className="flex items-center justify-between px-5 pb-5 pt-1 gap-3 flex-wrap">
                   <p className="text-xs text-gray-400 hidden sm:block">⌘↵ to continue</p>
                   {/* Quick starters */}
                   <div className="flex gap-2 flex-wrap">
@@ -759,7 +845,6 @@ export default function WebsiteTab() {
         {step === 1 && (
           <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 animate-fade-in">
             <div className="w-full max-w-xl mx-auto">
-              {/* Back + prompt preview */}
               <button onClick={() => setStep(0)} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-pink-500 transition-colors mb-6 font-medium">
                 <ArrowLeft className="w-4 h-4" /> Edit prompt
               </button>
@@ -835,8 +920,8 @@ export default function WebsiteTab() {
                   return (
                     <button key={m.id} onClick={() => setModel(m.id)}
                       className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${
-                        active ? 'glass shadow-lg' : 'glass border-white/40 hover:border-pink-200/60'
-                      } ${active ? 'border-pink-400/60 shadow-pink-200/30' : ''}`}>
+                        active ? 'glass shadow-lg border-pink-400/60 shadow-pink-200/30' : 'glass border-white/40 hover:border-pink-200/60'
+                      }`}>
                       <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${m.color} flex items-center justify-center shadow-md flex-shrink-0`}>
                         <Icon className="w-6 h-6 text-white" />
                       </div>
@@ -862,7 +947,6 @@ export default function WebsiteTab() {
                 })}
               </div>
 
-              {/* Coin balance */}
               <div className="flex items-center justify-between mt-4 px-1">
                 <p className="text-xs text-gray-400">
                   Balance: <span className="font-bold text-gray-700">{coins === null ? '—' : coins.toLocaleString()} coins</span>
@@ -891,27 +975,28 @@ export default function WebsiteTab() {
             {/* Generating state */}
             {isGenerating && (
               <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-                {/* Live code stream */}
-                <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(135deg, #1a0a2e 0%, #0d001a 100%)' }}>
-                  <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10 flex-shrink-0">
+                {/* Live code stream — clean monochrome terminal */}
+                <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#0a0a0a' }}>
+                  {/* Terminal chrome */}
+                  <div className="flex items-center gap-3 px-5 py-3 flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
                     <div className="flex gap-1.5">
-                      <div className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/70" />
-                      <div className="w-2.5 h-2.5 rounded-full bg-green-400/70" />
+                      <div className="w-3 h-3 rounded-full" style={{ background: '#ff5f57' }} />
+                      <div className="w-3 h-3 rounded-full" style={{ background: '#febc2e' }} />
+                      <div className="w-3 h-3 rounded-full" style={{ background: '#28c840' }} />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 rounded-full bg-pink-400 animate-pulse" />
-                      <span className="text-xs text-gray-400 font-mono">DANI is writing your code...</span>
+                    <span className="text-xs font-mono ml-2" style={{ color: '#666' }}>dani — writing your code</span>
+                    <div className="ml-auto flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse inline-block" />
+                      <span className="text-xs font-mono" style={{ color: '#444' }}>{selectedPreset.label}</span>
                     </div>
-                    <div className="ml-auto text-xs text-gray-600 font-mono">{selectedPreset.label}</div>
                   </div>
                   <pre
                     ref={genStreamRef}
-                    className="flex-1 overflow-y-auto p-5 text-xs font-mono leading-relaxed text-green-300 whitespace-pre-wrap break-all"
-                    style={{ scrollbarWidth: 'none' }}
+                    className="flex-1 overflow-y-auto p-6 text-sm font-mono leading-6 whitespace-pre-wrap break-words"
+                    style={{ color: '#e2e8f0', scrollbarWidth: 'none' }}
                   >
                     {streamDisplayed}
-                    {!streamDone && <span className="inline-block w-2 h-4 bg-pink-400 ml-0.5 align-text-bottom animate-pulse" />}
+                    {!streamDone && <span className="inline-block w-2 h-4 bg-white ml-0.5 align-text-bottom animate-pulse" style={{ opacity: 0.8 }} />}
                   </pre>
                 </div>
 
@@ -981,12 +1066,24 @@ export default function WebsiteTab() {
                 {/* Editor + Preview */}
                 <div className="flex-1 flex overflow-hidden">
                   {(viewMode === 'code' || viewMode === 'split') && (
-                    <div className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2 border-r border-white/30' : 'flex-1'}`}
-                      style={{ background: 'linear-gradient(135deg, #1a0a2e 0%, #0d001a 100%)' }}>
+                    <div
+                      className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2 border-r border-white/20' : 'flex-1'}`}
+                      style={{ background: '#0a0a0a' }}
+                    >
+                      {/* Editor chrome */}
+                      <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
+                        <div className="flex gap-1.5">
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ff5f57' }} />
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#febc2e' }} />
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#28c840' }} />
+                        </div>
+                        <span className="text-xs font-mono ml-1" style={{ color: '#555' }}>{currentFile?.path}</span>
+                      </div>
                       <textarea
                         value={currentContent}
                         onChange={e => { if (currentFile) setEditedContents(prev => ({ ...prev, [currentFile.path]: e.target.value })); }}
-                        className="flex-1 bg-transparent text-green-300 font-mono text-xs sm:text-[13px] p-5 resize-none focus:outline-none leading-relaxed w-full"
+                        className="flex-1 bg-transparent font-mono text-xs sm:text-[13px] p-5 resize-none focus:outline-none leading-relaxed w-full"
+                        style={{ color: '#e2e8f0', caretColor: '#fff' }}
                         spellCheck={false}
                       />
                     </div>
@@ -994,28 +1091,28 @@ export default function WebsiteTab() {
 
                   {(viewMode === 'preview' || viewMode === 'split') && (
                     <div className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2' : 'flex-1'}`}>
-                      <div className="flex items-center gap-2 px-3 py-1.5 glass border-b border-white/30 flex-shrink-0">
+                      <div className="flex items-center gap-2 px-3 py-2 glass border-b border-white/30 flex-shrink-0">
                         <div className="flex gap-1">
-                          <div className="w-2.5 h-2.5 rounded-full bg-red-400/60" />
-                          <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/60" />
-                          <div className="w-2.5 h-2.5 rounded-full bg-green-400/60" />
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ff5f57' }} />
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#febc2e' }} />
+                          <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#28c840' }} />
                         </div>
                         <div className="flex-1 flex items-center gap-2 bg-white/60 rounded-lg px-3 py-1 border border-white/40">
                           <Globe className="w-3 h-3 text-gray-400" />
-                          <span className="text-[11px] font-mono text-gray-500 truncate">{projectName}</span>
+                          <span className="text-[11px] font-mono text-gray-500 truncate">{projectName.replace(/-/g, ' ')}</span>
                         </div>
                         <button
                           onClick={() => { const w = window.open('', '_blank'); if (w) { w.document.write(previewHTML); w.document.close(); } }}
-                          className="p-1 glass rounded hover:bg-white/60 transition-all border border-white/30"
+                          className="p-1.5 glass rounded-lg hover:bg-white/60 transition-all border border-white/30"
                           title="Open in new tab">
-                          <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+                          <Globe className="w-3.5 h-3.5 text-pink-500" />
                         </button>
                       </div>
                       <iframe
                         srcDoc={previewHTML}
                         className="flex-1 w-full border-0 bg-white"
                         title="Preview"
-                        sandbox="allow-scripts allow-forms"
+                        sandbox="allow-scripts allow-forms allow-same-origin"
                       />
                     </div>
                   )}
