@@ -2,13 +2,13 @@ import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles, Globe, FileCode, Loader2, AlertCircle, Eye, Code2,
   Zap, Cpu, Crown, X, Copy, Check, Plus, Trash2, Download,
-  Share2, ChevronLeft, ChevronRight, SendHorizonal, SquareDot,
-  PanelLeftOpen, PanelLeftClose, Coins, CheckCircle,
+  Share2, ChevronRight, SendHorizonal, Coins, CheckCircle,
+  Menu, ArrowLeft, ChevronLeft, Wand2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
 
-// ─── Types ─────────────────────────────────────────────────────────────────────
+// ─── Types ────────────────────────────────────────────────────────────────────
 interface GeneratedFile { path: string; content: string }
 interface Project {
   id: string;
@@ -20,85 +20,99 @@ interface Project {
   createdAt: string;
 }
 
-// ─── Tech Presets ──────────────────────────────────────────────────────────────
+// ─── Tech Presets ─────────────────────────────────────────────────────────────
 const TECH_PRESETS = [
   {
     id: 'react-ts',
     label: 'TypeScript · React · Vite',
     short: 'React TS',
-    color: 'text-cyan-400',
+    emoji: '⚡',
+    desc: 'Type-safe, modern, scalable',
+    color: 'from-cyan-400 to-blue-500',
+    ring: 'ring-cyan-400/40',
     stack: ['react', 'typescript', 'vite'],
-    default: true,
   },
   {
     id: 'react-js',
     label: 'JavaScript · React · Vite',
     short: 'React JS',
-    color: 'text-yellow-400',
+    emoji: '⚛️',
+    desc: 'Fast, flexible, familiar',
+    color: 'from-yellow-400 to-orange-500',
+    ring: 'ring-yellow-400/40',
     stack: ['react', 'javascript', 'vite'],
   },
   {
     id: 'vanilla',
     label: 'HTML · CSS · JavaScript',
-    short: 'HTML/CSS/JS',
-    color: 'text-orange-400',
+    short: 'Vanilla',
+    emoji: '🌐',
+    desc: 'Pure, lightweight, universal',
+    color: 'from-orange-400 to-pink-500',
+    ring: 'ring-orange-400/40',
     stack: ['html', 'css', 'javascript'],
   },
 ] as const;
 
 type TechPresetId = typeof TECH_PRESETS[number]['id'];
 
-// ─── Models ────────────────────────────────────────────────────────────────────
+// ─── Models ───────────────────────────────────────────────────────────────────
 const MODELS = [
   {
     id: 'dani-5.0',
     name: 'DANI 5.0',
-    tagline: 'Fast & smart',
+    tagline: 'Our smartest model',
+    desc: 'Top-tier intelligence, beautiful code, fast results',
     cost: 10,
-    badge: 'Free',
-    icon: Zap,
-    ring: 'ring-green-500/60',
-    pill: 'bg-green-500/15 text-green-400 border-green-500/30',
-    activePill: 'bg-green-500 text-white',
-    dot: 'bg-green-400',
+    badge: 'Best',
+    icon: Crown,
+    color: 'from-pink-500 to-purple-600',
+    ring: 'ring-pink-400/50',
+    textColor: 'text-pink-500',
+    badgeColor: 'bg-pink-500/15 text-pink-500 border-pink-500/30',
+    dot: 'bg-pink-400',
   },
   {
     id: 'primis-1.20',
     name: 'Primis 1.20',
     tagline: 'Advanced reasoning',
+    desc: 'Deep analysis, complex apps, detailed output',
     cost: 30,
     badge: 'Pro',
     icon: Cpu,
-    ring: 'ring-blue-500/60',
-    pill: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
-    activePill: 'bg-blue-500 text-white',
+    color: 'from-blue-500 to-indigo-600',
+    ring: 'ring-blue-400/50',
+    textColor: 'text-blue-500',
+    badgeColor: 'bg-blue-500/15 text-blue-500 border-blue-500/30',
     dot: 'bg-blue-400',
   },
   {
     id: 'lumi-5.3',
     name: 'Lumi 5.3',
-    tagline: 'Most powerful',
+    tagline: 'Ultrawide intelligence',
+    desc: 'Most powerful, complex systems, production-ready',
     cost: 75,
     badge: 'Premium',
-    icon: Crown,
-    ring: 'ring-yellow-500/60',
-    pill: 'bg-yellow-500/15 text-yellow-400 border-yellow-500/30',
-    activePill: 'bg-yellow-400 text-gray-900',
+    icon: Zap,
+    color: 'from-yellow-400 to-orange-500',
+    ring: 'ring-yellow-400/50',
+    textColor: 'text-yellow-500',
+    badgeColor: 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',
     dot: 'bg-yellow-400',
   },
 ] as const;
 
 type ModelId = typeof MODELS[number]['id'];
 
-// ─── Plans ─────────────────────────────────────────────────────────────────────
+// ─── Plans ────────────────────────────────────────────────────────────────────
 const PLANS = [
-  { name: 'Free', price: '$0', sub: '/mo', coins: '500 coins/day', features: ['DANI 5.0', 'ZIP download', '10 coins/gen'], grad: 'from-gray-500 to-gray-600', cta: 'Current plan', off: true },
+  { name: 'Free', price: '$0', sub: '/mo', coins: '500 coins/day', features: ['DANI 5.0', 'ZIP download', '10 coins/gen'], grad: 'from-gray-400 to-gray-500', cta: 'Current plan', off: true },
   { name: 'Starter', price: '$4.99', sub: '/mo', coins: '2k coins/mo', features: ['All 3 models', 'Priority gen', 'Chat history'], grad: 'from-pink-500 to-purple-600', cta: 'Coming soon', off: true },
   { name: 'Pro', price: '$14.99', sub: '/mo', coins: '10k coins/mo', features: ['All models', 'Fastest gen', 'Priority support'], grad: 'from-blue-500 to-indigo-600', cta: 'Coming soon', off: true, popular: true },
   { name: 'Unlimited', price: '$29.99', sub: '/mo', coins: '∞ coins', features: ['Unlimited gen', 'All models', 'API access'], grad: 'from-yellow-400 to-orange-500', cta: 'Coming soon', off: true },
 ];
 
-// ─── Date grouping (ChatGPT style) ─────────────────────────────────────────────
+// ─── Date grouping ────────────────────────────────────────────────────────────
 function groupProjectsByDate(projects: Project[]) {
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -126,7 +140,7 @@ function groupProjectsByDate(projects: Project[]) {
   return groups.filter(g => g.items.length > 0);
 }
 
-// ─── Streaming animation hook ──────────────────────────────────────────────────
+// ─── Streaming animation hook ─────────────────────────────────────────────────
 function useCodeStream(targetContent: string, isActive: boolean) {
   const [displayed, setDisplayed] = useState('');
   const [done, setDone] = useState(false);
@@ -137,15 +151,12 @@ function useCodeStream(targetContent: string, isActive: boolean) {
     setDisplayed('');
     setDone(false);
     let idx = 0;
-    const CHUNK = 18; // chars per frame
+    const CHUNK = 22;
     const animate = () => {
       idx = Math.min(idx + CHUNK, targetContent.length);
       setDisplayed(targetContent.slice(0, idx));
-      if (idx < targetContent.length) {
-        rafRef.current = requestAnimationFrame(animate);
-      } else {
-        setDone(true);
-      }
+      if (idx < targetContent.length) rafRef.current = requestAnimationFrame(animate);
+      else setDone(true);
     };
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
@@ -154,107 +165,123 @@ function useCodeStream(targetContent: string, isActive: boolean) {
   return { displayed, done };
 }
 
-// ─── Inline Copy Button ────────────────────────────────────────────────────────
+// ─── Copy Button ──────────────────────────────────────────────────────────────
 function CopyBtn({ text, className = '' }: { text: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className={`p-1.5 rounded-lg bg-white/8 hover:bg-white/20 text-gray-400 hover:text-white transition-all ${className}`}
+      className={`p-1.5 rounded-lg glass hover:bg-white/60 text-gray-500 hover:text-gray-800 transition-all border border-white/30 ${className}`}
     >
-      {copied ? <Check className="w-3.5 h-3.5 text-green-400" /> : <Copy className="w-3.5 h-3.5" />}
+      {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
     </button>
   );
 }
 
-// ─── Plans Modal ───────────────────────────────────────────────────────────────
+// ─── Plans Modal ──────────────────────────────────────────────────────────────
 function PlansModal({ coins, onClose }: { coins: number; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md" onClick={onClose}>
-      <div className="bg-[#0d0d14] border border-white/10 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md" onClick={onClose}>
+      <div className="glass border border-white/30 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
         <div className="p-8">
           <div className="flex items-center justify-between mb-6">
             <div>
-              <h2 className="text-2xl font-black text-white">Power Up 💎</h2>
+              <h2 className="text-2xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">Power Up 💎</h2>
               <p className="text-gray-500 text-sm mt-0.5">500 free coins every single day</p>
             </div>
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-yellow-500/10 border border-yellow-500/20 rounded-xl px-4 py-2">
-                <span className="text-yellow-400 font-black text-lg">{coins.toLocaleString()}</span>
-                <span className="text-yellow-600 text-sm">coins</span>
+              <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2">
+                <span className="text-yellow-600 font-black text-lg">{coins.toLocaleString()}</span>
+                <span className="text-yellow-500 text-sm">🪙</span>
               </div>
-              <button onClick={onClose} className="p-2 hover:bg-white/8 rounded-xl transition-all">
+              <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-xl transition-all glass border border-white/30">
                 <X className="w-5 h-5 text-gray-500" />
               </button>
             </div>
           </div>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {PLANS.map(p => (
-              <div key={p.name} className={`relative bg-white/4 border border-white/8 rounded-2xl p-5 flex flex-col ${p.popular ? 'ring-1 ring-purple-500/60' : ''}`}>
-                {p.popular && <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[10px] font-bold px-3 py-1 rounded-full whitespace-nowrap">⭐ Most Popular</div>}
-                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${p.grad} flex items-center justify-center mb-3`}>
+              <div key={p.name} className={`relative glass border border-white/30 rounded-2xl p-5 flex flex-col ${p.popular ? 'ring-2 ring-purple-400/50' : ''}`}>
+                {p.popular && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[10px] font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-lg">
+                    ⭐ Most Popular
+                  </div>
+                )}
+                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${p.grad} flex items-center justify-center mb-3 shadow-md`}>
                   <Coins className="w-4 h-4 text-white" />
                 </div>
-                <p className="font-black text-white text-lg">{p.name}</p>
-                <p className="text-2xl font-black text-white mt-1">{p.price}<span className="text-sm text-gray-600">{p.sub}</span></p>
-                <p className="text-xs font-semibold text-pink-400 mt-1 mb-3">{p.coins}</p>
+                <p className="font-black text-gray-800 text-lg">{p.name}</p>
+                <p className="text-2xl font-black text-gray-800 mt-1">{p.price}<span className="text-sm text-gray-400">{p.sub}</span></p>
+                <p className="text-xs font-semibold text-pink-500 mt-1 mb-3">{p.coins}</p>
                 <ul className="space-y-1.5 flex-1 mb-4">
-                  {p.features.map(f => <li key={f} className="flex items-center gap-2 text-xs text-gray-500"><CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />{f}</li>)}
+                  {p.features.map(f => (
+                    <li key={f} className="flex items-center gap-2 text-xs text-gray-500">
+                      <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />{f}
+                    </li>
+                  ))}
                 </ul>
-                <button disabled={p.off} className={`w-full py-2 rounded-xl text-xs font-bold ${p.off ? 'bg-white/5 text-gray-700 cursor-not-allowed' : `bg-gradient-to-r ${p.grad} text-white`}`}>{p.cta}</button>
+                <button disabled={p.off} className={`w-full py-2 rounded-xl text-xs font-bold transition-all ${p.off ? 'glass text-gray-400 cursor-not-allowed border border-white/30' : `bg-gradient-to-r ${p.grad} text-white shadow-md`}`}>
+                  {p.cta}
+                </button>
               </div>
             ))}
           </div>
-          <p className="text-center text-xs text-gray-700 mt-5">Payment plans launching soon · Your coins never expire 🌸</p>
+          <p className="text-center text-xs text-gray-400 mt-5">Payment plans launching soon · Your coins never expire 🌸</p>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Share Modal ───────────────────────────────────────────────────────────────
+// ─── Share Modal ──────────────────────────────────────────────────────────────
 function ShareModal({ url, onClose }: { url: string; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-md" onClick={onClose}>
-      <div className="bg-[#0d0d14] border border-white/10 rounded-2xl w-full max-w-sm p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md" onClick={onClose}>
+      <div className="glass border border-white/30 rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-white flex items-center gap-2"><Share2 className="w-4 h-4 text-pink-400" /> Share</h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-white/8 rounded-lg"><X className="w-4 h-4 text-gray-500" /></button>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <Share2 className="w-4 h-4 text-pink-500" /> Share Your Build
+          </h3>
+          <button onClick={onClose} className="p-1.5 hover:bg-white/60 rounded-lg glass border border-white/30">
+            <X className="w-4 h-4 text-gray-500" />
+          </button>
         </div>
-        <div className="bg-white/5 border border-white/10 rounded-xl px-3 py-2.5 flex items-center gap-2 mb-3">
-          <Globe className="w-3.5 h-3.5 text-gray-500 flex-shrink-0" />
-          <span className="text-xs font-mono text-gray-400 flex-1 truncate">{url}</span>
-          <button onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            className="flex-shrink-0 px-2.5 py-1 bg-pink-500/20 hover:bg-pink-500/30 text-pink-400 rounded-lg text-xs font-bold transition-all flex items-center gap-1">
+        <div className="glass border border-pink-200/50 rounded-xl px-3 py-2.5 flex items-center gap-2 mb-3">
+          <Globe className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
+          <span className="text-xs font-mono text-gray-600 flex-1 truncate">{url}</span>
+          <button
+            onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+            className="flex-shrink-0 px-2.5 py-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-md"
+          >
             {copied ? <><Check className="w-3 h-3" />Copied!</> : <><Copy className="w-3 h-3" />Copy</>}
           </button>
         </div>
-        <p className="text-[11px] text-gray-700 text-center">Anyone with this link can view your website</p>
+        <p className="text-[11px] text-gray-400 text-center">Anyone with this link can view your website 🌸</p>
       </div>
     </div>
   );
 }
 
-// ─── MAIN COMPONENT ────────────────────────────────────────────────────────────
+// ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function WebsiteTab() {
-  // State
+  // Wizard step: 0=prompt, 1=tech, 2=model, 3=results/generating
+  const [step, setStep] = useState(0);
   const [prompt, setPrompt] = useState('');
   const [techPreset, setTechPreset] = useState<TechPresetId>('react-ts');
   const [model, setModel] = useState<ModelId>('dani-5.0');
   const [isGenerating, setIsGenerating] = useState(false);
-  const [genPhase, setGenPhase] = useState('');
   const [genStreamContent, setGenStreamContent] = useState('');
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
   const [editedContents, setEditedContents] = useState<Record<string, string>>({});
   const [selectedFileIdx, setSelectedFileIdx] = useState(0);
-  const [viewMode, setViewMode] = useState<'code' | 'preview' | 'split'>('split');
+  const [viewMode, setViewMode] = useState<'code' | 'preview' | 'split'>('preview');
   const [projectName, setProjectName] = useState('');
   const [projects, setProjects] = useState<Project[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [coins, setCoins] = useState<number | null>(null);
   const [error, setError] = useState('');
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [showShare, setShowShare] = useState(false);
@@ -270,17 +297,13 @@ export default function WebsiteTab() {
   const currentFile = generatedFiles[selectedFileIdx];
   const currentContent = currentFile ? (editedContents[currentFile.path] ?? currentFile.content) : '';
 
-  // ── Streaming animation for live code ──────────────────────────────────────
   const { displayed: streamDisplayed, done: streamDone } = useCodeStream(genStreamContent, isGenerating && genStreamContent.length > 0);
 
-  // Auto-scroll the stream view
   useEffect(() => {
-    if (genStreamRef.current) {
-      genStreamRef.current.scrollTop = genStreamRef.current.scrollHeight;
-    }
+    if (genStreamRef.current) genStreamRef.current.scrollTop = genStreamRef.current.scrollHeight;
   }, [streamDisplayed]);
 
-  // ── Load data on mount ──────────────────────────────────────────────────────
+  // Load data
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
@@ -294,7 +317,7 @@ export default function WebsiteTab() {
     } catch { /* ignore */ }
   }, []);
 
-  // ── Project management ──────────────────────────────────────────────────────
+  // Project management
   const saveProject = useCallback((name: string, desc: string, mod: string, preset: string, files: GeneratedFile[]): string => {
     const id = Date.now().toString();
     const project: Project = { id, name, description: desc, model: mod, techPreset: preset, files, createdAt: new Date().toISOString() };
@@ -311,13 +334,15 @@ export default function WebsiteTab() {
     setProjectName(p.name);
     setPrompt(p.description);
     setModel(p.model as ModelId);
-    setTechPreset((p.techPreset as TechPresetId) || 'vanilla');
+    setTechPreset((p.techPreset as TechPresetId) || 'react-ts');
     setEditedContents({});
     setSelectedFileIdx(0);
-    setViewMode('split');
+    setViewMode('preview');
     setActiveProjectId(p.id);
     setError('');
     setShareUrl('');
+    setStep(3);
+    setSidebarOpen(false);
   }, []);
 
   const deleteProject = (id: string, e: React.MouseEvent) => {
@@ -327,47 +352,48 @@ export default function WebsiteTab() {
       localStorage.setItem('dani-vibe-projects', JSON.stringify(updated));
       return updated;
     });
-    if (activeProjectId === id) { setActiveProjectId(null); setGeneratedFiles([]); setProjectName(''); }
+    if (activeProjectId === id) { setActiveProjectId(null); setGeneratedFiles([]); setProjectName(''); setStep(0); }
   };
 
-  const newProject = () => {
+  const startNew = () => {
     setGeneratedFiles([]); setPrompt(''); setProjectName('');
     setEditedContents({}); setActiveProjectId(null); setError('');
-    setShareUrl(''); setGenStreamContent('');
-    promptRef.current?.focus();
+    setShareUrl(''); setGenStreamContent(''); setStep(0);
+    setSidebarOpen(false);
+    setTimeout(() => promptRef.current?.focus(), 100);
   };
 
-  // ── Generate ────────────────────────────────────────────────────────────────
+  // Generate
   const handleGenerate = async () => {
     const p = prompt.trim();
-    if (!p) { setError('Describe the website you want to build'); promptRef.current?.focus(); return; }
+    if (!p) return;
     if (coins !== null && coins < selectedModel.cost) {
-      setError(`Need ${selectedModel.cost} coins, you have ${coins}.`);
+      setError(`Need ${selectedModel.cost} coins — you have ${coins}.`);
       setShowPlans(true);
       return;
     }
 
+    setStep(3);
     setIsGenerating(true);
     setError('');
     setGeneratedFiles([]);
     setEditedContents({});
     setShareUrl('');
 
-    // Animated phases for the stream panel
     const phases = [
       `// ✦ Initializing ${selectedModel.name}...\n`,
-      `// ✦ Analyzing: "${p.slice(0, 60)}${p.length > 60 ? '...' : ''}"\n`,
-      `// ✦ Tech stack: ${selectedPreset.label}\n`,
-      `// ✦ Designing component architecture...\n`,
+      `// ✦ Reading your prompt...\n// ✦ "${p.slice(0, 60)}${p.length > 60 ? '...' : ''}"\n`,
+      `// ✦ Stack: ${selectedPreset.label}\n`,
+      `// ✦ Planning component architecture...\n`,
       `// ✦ Writing ${selectedPreset.stack.includes('react') ? 'React components' : 'HTML structure'}...\n`,
-      `// ✦ Applying styles & animations...\n`,
-      `// ✦ Adding interactivity...\n`,
-      `// ✦ Polishing & optimizing...\n`,
+      `// ✦ Adding styles & animations...\n`,
+      `// ✦ Wiring up interactivity...\n`,
+      `// ✦ Final polish & optimization...\n`,
     ];
 
+    let builtPhases = phases[0];
+    setGenStreamContent(builtPhases);
     let phaseIdx = 0;
-    let builtPhases = '';
-    setGenStreamContent(phases[0]);
     const interval = setInterval(() => {
       phaseIdx = Math.min(phaseIdx + 1, phases.length - 1);
       builtPhases += phases[phaseIdx];
@@ -394,10 +420,8 @@ export default function WebsiteTab() {
       const files: GeneratedFile[] = data.files || [];
       const name: string = data.projectName || 'my-project';
 
-      // Show first file streaming in
       if (files.length > 0) {
-        const firstFileContent = `// ✅ Generation complete!\n\n// File: ${files[0].path}\n\n${files[0].content}`;
-        setGenStreamContent(firstFileContent);
+        setGenStreamContent(`// ✅ Done! Your website is ready 🌸\n\n// ${files[0].path}\n\n${files[0].content}`);
       }
 
       setGeneratedFiles(files);
@@ -408,16 +432,17 @@ export default function WebsiteTab() {
       const newId = saveProject(name, p, model, techPreset, files);
       setActiveProjectId(newId);
       setSelectedFileIdx(0);
-      setViewMode('split');
+      setViewMode('preview');
     } catch (err: unknown) {
       clearInterval(interval);
       setError(err instanceof Error ? err.message : 'Generation failed');
+      setStep(2);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // ── Share ───────────────────────────────────────────────────────────────────
+  // Share
   const handleShare = async () => {
     if (!hasFiles) return;
     setIsSharing(true);
@@ -442,7 +467,7 @@ export default function WebsiteTab() {
     finally { setIsSharing(false); }
   };
 
-  // ── Download ZIP ────────────────────────────────────────────────────────────
+  // Download ZIP
   const handleDownload = () => {
     const enc = new TextEncoder();
     const chunks: Uint8Array[] = [];
@@ -477,7 +502,7 @@ export default function WebsiteTab() {
     URL.revokeObjectURL(url);
   };
 
-  // ── Preview HTML ────────────────────────────────────────────────────────────
+  // Preview HTML
   const previewHTML = useMemo(() => {
     if (!hasFiles) return '';
     const html = generatedFiles.find(f => f.path === 'index.html');
@@ -490,378 +515,530 @@ export default function WebsiteTab() {
     return h;
   }, [generatedFiles, editedContents, hasFiles]);
 
-  // ── Keyboard shortcut ───────────────────────────────────────────────────────
   const handlePromptKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); handleGenerate(); }
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (prompt.trim()) setStep(1); }
   };
 
   const groupedProjects = groupProjectsByDate(projects);
 
-  // ════════════════════════════════════════════════════════════════════════════
+  // ═══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex-1 flex overflow-hidden bg-[#080810] text-white">
+    <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #fdf2f8 0%, #faf5ff 50%, #eff6ff 100%)' }}>
       {showPlans && <PlansModal coins={coins ?? 0} onClose={() => setShowPlans(false)} />}
       {showShare && shareUrl && <ShareModal url={shareUrl} onClose={() => setShowShare(false)} />}
 
       {/* Daily bonus toast */}
       {dailyBonus > 0 && (
-        <div className="fixed top-16 right-4 z-50 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3">
+        <div className="fixed top-20 right-4 z-50 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-fade-in">
           <span className="text-xl">🎉</span>
           <div><p className="font-bold text-sm">Daily refresh!</p><p className="text-xs text-green-100">+{dailyBonus} coins added</p></div>
           <button onClick={() => setDailyBonus(0)} className="ml-1 text-green-200 hover:text-white"><X className="w-4 h-4" /></button>
         </div>
       )}
 
-      {/* ════ LEFT HISTORY SIDEBAR ═════════════════════════════════════════════ */}
-      <aside className={`flex-shrink-0 flex flex-col bg-[#0c0c18] border-r border-white/6 transition-all duration-300 ease-in-out overflow-hidden ${sidebarOpen ? 'w-60' : 'w-0'}`}>
-        {/* Sidebar header */}
-        <div className="flex items-center justify-between px-4 pt-5 pb-4 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
-              <Sparkles className="w-3.5 h-3.5 text-white" />
+      {/* ── History Sidebar Overlay ── */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 flex" onClick={() => setSidebarOpen(false)}>
+          <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
+          <aside
+            className="relative z-50 w-72 flex flex-col glass border-r border-white/40 shadow-2xl animate-fade-in h-full"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Sidebar header */}
+            <div className="px-5 pt-6 pb-4 border-b border-white/30 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-md">
+                  <Sparkles className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="font-black text-gray-800 text-sm">Vibe Code</p>
+                  <p className="text-[10px] text-gray-400">Your projects</p>
+                </div>
+              </div>
+              <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-white/60 rounded-lg glass border border-white/30 transition-all">
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
             </div>
-            <span className="font-black text-sm text-white tracking-tight whitespace-nowrap">Vibe Code</span>
-          </div>
-          <button onClick={newProject}
-            className="p-1.5 rounded-lg hover:bg-white/8 text-gray-500 hover:text-white transition-all flex-shrink-0"
-            title="New project">
-            <Plus className="w-4 h-4" />
-          </button>
+
+            {/* Coins + New */}
+            <div className="px-4 py-3 space-y-2 border-b border-white/20">
+              <button onClick={() => { setShowPlans(true); setSidebarOpen(false); }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 glass rounded-2xl border border-yellow-200/60 hover:border-yellow-400/50 transition-all">
+                <span className="text-lg">💰</span>
+                <div className="flex-1 text-left">
+                  <p className="text-[10px] text-gray-400">Coin Balance</p>
+                  <p className="font-black text-gray-800 text-sm">
+                    {coins === null ? '—' : coins.toLocaleString()}
+                    <span className="text-yellow-500 text-xs ml-1">coins</span>
+                  </p>
+                </div>
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+              </button>
+              <button onClick={startNew}
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm font-bold shadow-md hover:from-pink-600 hover:to-purple-700 transition-all">
+                <Plus className="w-4 h-4" /> New Project
+              </button>
+            </div>
+
+            {/* Project list */}
+            <div className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
+              {projects.length === 0 ? (
+                <div className="text-center py-12 px-4">
+                  <div className="w-12 h-12 rounded-2xl bg-pink-50 border border-pink-100 flex items-center justify-center mx-auto mb-3">
+                    <Globe className="w-6 h-6 text-pink-300" />
+                  </div>
+                  <p className="text-sm text-gray-400">Projects you build will appear here</p>
+                </div>
+              ) : (
+                groupedProjects.map(group => (
+                  <div key={group.label}>
+                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">{group.label}</p>
+                    <div className="space-y-1">
+                      {group.items.map(p => (
+                        <div key={p.id} onClick={() => loadProject(p)}
+                          className={`group relative flex items-start gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
+                            activeProjectId === p.id
+                              ? 'bg-gradient-to-r from-pink-500/15 to-purple-500/15 border border-pink-300/40 shadow-sm'
+                              : 'hover:glass hover:border hover:border-white/40'
+                          }`}>
+                          <div className="flex-1 min-w-0">
+                            <p className={`text-xs font-semibold truncate ${activeProjectId === p.id ? 'text-pink-700' : 'text-gray-700'}`}>
+                              {p.name.replace(/-/g, ' ')}
+                            </p>
+                            <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.description.slice(0, 45)}…</p>
+                          </div>
+                          <button onClick={e => deleteProject(p.id, e)}
+                            className="flex-shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 text-gray-400 transition-all">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </aside>
         </div>
+      )}
+
+      {/* ── Top bar (always visible) ── */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 glass border-b border-white/40">
+        <button onClick={() => setSidebarOpen(true)}
+          className="p-2.5 glass rounded-xl hover:bg-white/80 transition-all border border-white/40 flex-shrink-0"
+          title="Project history">
+          <Menu className="w-5 h-5 text-gray-600" />
+        </button>
+
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+            <Sparkles className="w-3.5 h-3.5 text-white" />
+          </div>
+          <span className="font-black text-gray-800 text-sm tracking-tight">Vibe Code</span>
+          {step === 3 && hasFiles && (
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-600 border border-green-200 font-semibold">{projectName}</span>
+          )}
+        </div>
+
+        <div className="flex-1" />
+
+        {/* Step indicator */}
+        {step < 3 && (
+          <div className="hidden sm:flex items-center gap-1.5">
+            {['Prompt', 'Stack', 'Model'].map((label, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all ${
+                  step === i ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md' :
+                  step > i ? 'bg-green-100 text-green-600 border border-green-200' :
+                  'glass text-gray-400 border border-white/40'
+                }`}>
+                  {step > i ? <Check className="w-3 h-3" /> : <span>{i + 1}</span>}
+                  {label}
+                </div>
+                {i < 2 && <ChevronRight className="w-3 h-3 text-gray-300" />}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Result actions */}
+        {step === 3 && hasFiles && (
+          <div className="flex items-center gap-2">
+            <button onClick={handleShare} disabled={isSharing}
+              className="flex items-center gap-1.5 px-3 py-1.5 glass rounded-xl border border-white/40 hover:bg-white/80 text-gray-600 text-xs font-semibold transition-all disabled:opacity-50">
+              <Share2 className="w-3.5 h-3.5 text-pink-500" />{isSharing ? '…' : 'Share'}
+            </button>
+            <button onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-xs font-bold shadow-md hover:from-pink-600 hover:to-purple-700 transition-all">
+              <Download className="w-3.5 h-3.5" />ZIP
+            </button>
+          </div>
+        )}
 
         {/* Coins pill */}
-        <div className="px-3 pb-3 flex-shrink-0">
-          <button onClick={() => setShowPlans(true)}
-            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-yellow-500/8 border border-yellow-500/15 hover:border-yellow-500/30 transition-all group">
-            <span className="text-base flex-shrink-0">💰</span>
-            <div className="flex-1 text-left min-w-0">
-              <p className="text-[10px] text-gray-600">Balance</p>
-              <p className="text-sm font-black text-white truncate">
-                {coins === null ? '—' : coins.toLocaleString()}
-                <span className="text-yellow-500 text-[10px] font-semibold ml-1">coins</span>
-              </p>
-            </div>
-            <ChevronRight className="w-3 h-3 text-gray-700 group-hover:text-yellow-500 transition-colors flex-shrink-0" />
-          </button>
-        </div>
+        <button onClick={() => setShowPlans(true)}
+          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 glass rounded-xl border border-yellow-200/60 hover:border-yellow-400/50 transition-all">
+          <span className="text-sm">🪙</span>
+          <span className="text-xs font-bold text-gray-700">{coins === null ? '—' : coins.toLocaleString()}</span>
+        </button>
+      </div>
 
-        {/* Project history — ChatGPT style */}
-        <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-4 scrollbar-thin">
-          {projects.length === 0 ? (
-            <div className="text-center py-10 px-4">
-              <SquareDot className="w-8 h-8 text-gray-800 mx-auto mb-3" />
-              <p className="text-xs text-gray-700 leading-relaxed">Your projects will appear here</p>
-            </div>
-          ) : (
-            groupedProjects.map(group => (
-              <div key={group.label}>
-                <p className="text-[10px] font-semibold text-gray-700 uppercase tracking-wider px-2 mb-1.5">{group.label}</p>
-                <div className="space-y-0.5">
-                  {group.items.map(p => (
-                    <div key={p.id} onClick={() => loadProject(p)}
-                      className={`group relative flex items-start gap-2.5 px-2.5 py-2 rounded-xl cursor-pointer transition-all ${
-                        activeProjectId === p.id
-                          ? 'bg-white/10 text-white'
-                          : 'text-gray-500 hover:bg-white/5 hover:text-gray-300'
-                      }`}>
-                      <div className="flex-1 min-w-0 pt-0.5">
-                        <p className="text-xs font-medium truncate leading-snug">{p.name.replace(/-/g, ' ')}</p>
-                        <p className="text-[10px] text-gray-700 truncate mt-0.5">{p.description.slice(0, 40)}…</p>
-                      </div>
-                      <button onClick={e => deleteProject(p.id, e)}
-                        className="flex-shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-500/20 hover:text-red-400 transition-all mt-0.5">
-                        <Trash2 className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ))}
+      {/* ═══════════════════ STEP CONTENT ═══════════════════ */}
+      <div className="flex-1 overflow-hidden flex flex-col">
+
+        {/* ── STEP 0: Big Prompt Input ── */}
+        {step === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 animate-fade-in">
+            <div className="w-full max-w-2xl mx-auto">
+              {/* Hero */}
+              <div className="text-center mb-10">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-pink-500 to-purple-600 mb-5 shadow-2xl shadow-pink-500/30">
+                  <Wand2 className="w-10 h-10 text-white" />
                 </div>
+                <h1 className="text-3xl sm:text-4xl font-black bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
+                  What are we building?
+                </h1>
+                <p className="text-gray-500 text-sm sm:text-base">Describe your website or app — DANI writes every line of code for you ✨</p>
               </div>
-            ))
-          )}
-        </div>
-      </aside>
 
-      {/* ════ MAIN IDE AREA ════════════════════════════════════════════════════ */}
-      <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-
-        {/* ── Top bar ── */}
-        <div className="flex items-center gap-2 px-4 py-2.5 border-b border-white/6 bg-[#0a0a15] flex-shrink-0">
-          {/* Sidebar toggle */}
-          <button onClick={() => setSidebarOpen(v => !v)}
-            className="p-1.5 rounded-lg hover:bg-white/8 text-gray-600 hover:text-white transition-all flex-shrink-0">
-            {sidebarOpen ? <PanelLeftClose className="w-4 h-4" /> : <PanelLeftOpen className="w-4 h-4" />}
-          </button>
-
-          {/* macOS dots */}
-          <div className="flex gap-1.5 mr-1 flex-shrink-0">
-            <div className="w-2.5 h-2.5 rounded-full bg-red-500/70" />
-            <div className="w-2.5 h-2.5 rounded-full bg-yellow-500/70" />
-            <div className="w-2.5 h-2.5 rounded-full bg-green-500/70" />
-          </div>
-
-          {/* Project name / breadcrumb */}
-          <div className="flex-1 flex items-center gap-1.5 min-w-0">
-            <Globe className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" />
-            <span className="text-xs font-mono text-gray-500 truncate">
-              {hasFiles ? projectName : 'new-project'}
-            </span>
-            {hasFiles && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-500/15 text-green-400 border border-green-500/20 flex-shrink-0">ready</span>}
-          </div>
-
-          {/* View mode toggle — only when files exist */}
-          {hasFiles && (
-            <div className="flex items-center bg-white/5 rounded-lg p-0.5 gap-0.5 flex-shrink-0">
-              <button onClick={() => setViewMode('code')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${viewMode === 'code' ? 'bg-white/15 text-white' : 'text-gray-600 hover:text-gray-400'}`}>
-                <Code2 className="w-3 h-3" />Code
-              </button>
-              <button onClick={() => setViewMode('split')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${viewMode === 'split' ? 'bg-white/15 text-white' : 'text-gray-600 hover:text-gray-400'}`}>
-                Split
-              </button>
-              <button onClick={() => setViewMode('preview')}
-                className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all flex items-center gap-1.5 ${viewMode === 'preview' ? 'bg-white/15 text-white' : 'text-gray-600 hover:text-gray-400'}`}>
-                <Eye className="w-3 h-3" />Preview
-              </button>
-            </div>
-          )}
-
-          {/* Action buttons */}
-          {hasFiles && (
-            <div className="flex items-center gap-1.5 flex-shrink-0">
-              <button onClick={handleShare} disabled={isSharing}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/12 text-gray-400 hover:text-white text-xs font-medium transition-all disabled:opacity-40">
-                <Share2 className="w-3.5 h-3.5" />{isSharing ? '…' : 'Share'}
-              </button>
-              <button onClick={handleDownload}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-green-500/15 hover:bg-green-500/25 text-green-400 hover:text-green-300 text-xs font-bold transition-all">
-                <Download className="w-3.5 h-3.5" />ZIP
-              </button>
-            </div>
-          )}
-        </div>
-
-        {/* ── Workspace ── */}
-        <div className="flex-1 flex flex-col overflow-hidden">
-
-          {/* ── IDLE / EMPTY STATE ── */}
-          {!isGenerating && !hasFiles && (
-            <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
-              <div className="w-16 h-16 rounded-3xl bg-gradient-to-br from-pink-500 to-purple-700 flex items-center justify-center mb-6 shadow-2xl shadow-purple-700/30">
-                <Sparkles className="w-8 h-8 text-white" />
-              </div>
-              <h1 className="text-4xl font-black text-white mb-2 tracking-tight">DANI Vibe Code</h1>
-              <p className="text-gray-600 text-sm max-w-xs text-center leading-relaxed mb-10">
-                Describe any app or website. DANI writes every line of code — live, in your workspace.
-              </p>
-              {/* Quick starters */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full max-w-lg">
-                {[
-                  { icon: '🛒', label: 'E-commerce store', desc: 'Product grid, cart, checkout flow' },
-                  { icon: '💼', label: 'Portfolio site', desc: 'Hero, projects, contact form' },
-                  { icon: '📊', label: 'SaaS dashboard', desc: 'Stats, charts, sidebar nav' },
-                  { icon: '🎨', label: 'Creative agency', desc: 'Bold animations, dark theme' },
-                ].map(s => (
-                  <button key={s.label} onClick={() => { setPrompt(`${s.label} — ${s.desc}`); promptRef.current?.focus(); }}
-                    className="flex items-start gap-3 p-3.5 rounded-xl bg-white/3 border border-white/8 hover:border-pink-500/30 hover:bg-white/6 transition-all text-left group">
-                    <span className="text-xl flex-shrink-0">{s.icon}</span>
-                    <div>
-                      <p className="text-sm font-semibold text-gray-300 group-hover:text-white transition-colors">{s.label}</p>
-                      <p className="text-xs text-gray-700">{s.desc}</p>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ── GENERATING STATE — Live code stream ── */}
-          {isGenerating && (
-            <div className="flex-1 flex overflow-hidden">
-              {/* Stream panel */}
-              <div className="flex-1 flex flex-col bg-[#050508] overflow-hidden">
-                {/* Stream top bar */}
-                <div className="flex items-center gap-3 px-4 py-2 border-b border-white/5 bg-black/30 flex-shrink-0">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full bg-pink-500 animate-pulse" />
-                    <span className="text-xs text-gray-500 font-mono">DANI is writing...</span>
-                  </div>
-                  <div className="flex-1" />
-                  <span className="text-xs text-gray-700 font-mono">{selectedPreset.label}</span>
-                </div>
-                {/* Code stream */}
-                <pre
-                  ref={genStreamRef}
-                  className="flex-1 overflow-y-auto p-5 text-xs font-mono leading-relaxed text-green-300/80 whitespace-pre-wrap break-all"
-                  style={{ scrollbarWidth: 'none' }}
-                >
-                  {streamDisplayed}
-                  {!streamDone && <span className="inline-block w-2 h-4 bg-green-400 ml-0.5 align-text-bottom animate-pulse" />}
-                </pre>
-              </div>
-              {/* Loading indicator panel */}
-              <div className="w-72 flex-shrink-0 border-l border-white/5 bg-[#08080f] flex flex-col items-center justify-center gap-5 p-8">
-                <div className="relative">
-                  <div className="w-20 h-20 rounded-full bg-gradient-to-br from-pink-600 via-purple-700 to-blue-700 animate-pulse shadow-2xl shadow-purple-700/40" />
-                  <div className="absolute inset-0 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 animate-ping opacity-15" />
-                  <div className="absolute inset-3 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center">
-                    <Loader2 className="w-8 h-8 text-white animate-spin" />
-                  </div>
-                </div>
-                <div className="text-center">
-                  <p className="text-sm font-bold text-white">Building...</p>
-                  <p className="text-xs text-pink-400 animate-pulse mt-1">{genPhase}</p>
-                  <p className="text-[10px] text-gray-700 mt-2">{selectedModel.name} · {selectedModel.cost} coins</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── DONE STATE — Code + Preview ── */}
-          {!isGenerating && hasFiles && (
-            <div className="flex-1 flex overflow-hidden">
-
-              {/* ── Code panel ── */}
-              {(viewMode === 'code' || viewMode === 'split') && (
-                <div className={`flex flex-col overflow-hidden bg-[#050508] ${viewMode === 'split' ? 'w-1/2 border-r border-white/6' : 'flex-1'}`}>
-                  {/* File tabs */}
-                  <div className="flex items-center gap-1 px-3 py-1.5 border-b border-white/6 overflow-x-auto flex-shrink-0" style={{ scrollbarWidth: 'none' }}>
-                    {generatedFiles.map((f, i) => (
-                      <button key={i} onClick={() => setSelectedFileIdx(i)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-mono whitespace-nowrap transition-all flex-shrink-0 ${
-                          selectedFileIdx === i
-                            ? 'bg-pink-500/15 text-pink-300 border border-pink-500/25'
-                            : 'text-gray-600 hover:text-gray-400 hover:bg-white/4'
-                        }`}>
-                        <FileCode className="w-3 h-3" />
-                        {f.path}
+              {/* Big prompt box */}
+              <div className="glass border-2 border-white/50 rounded-3xl shadow-xl shadow-pink-200/30 overflow-hidden">
+                <textarea
+                  ref={promptRef}
+                  value={prompt}
+                  onChange={e => setPrompt(e.target.value)}
+                  onKeyDown={handlePromptKey}
+                  placeholder="e.g. A beautiful e-commerce store with a hero section, product grid, shopping cart, and smooth animations..."
+                  rows={5}
+                  autoFocus
+                  className="w-full bg-transparent text-gray-800 placeholder-gray-400 text-base sm:text-lg leading-relaxed p-6 resize-none focus:outline-none font-medium"
+                />
+                <div className="flex items-center justify-between px-5 pb-5 pt-1 gap-3">
+                  <p className="text-xs text-gray-400 hidden sm:block">⌘↵ to continue</p>
+                  {/* Quick starters */}
+                  <div className="flex gap-2 flex-wrap">
+                    {['Portfolio site', 'SaaS dashboard', 'Landing page'].map(s => (
+                      <button key={s} onClick={() => setPrompt(s + ' — modern, responsive design with animations')}
+                        className="text-xs px-3 py-1.5 glass rounded-full border border-white/50 text-gray-600 hover:text-pink-600 hover:border-pink-300/50 transition-all font-medium">
+                        {s}
                       </button>
                     ))}
-                    <div className="ml-auto flex-shrink-0 pl-2">
-                      <CopyBtn text={currentContent} />
-                    </div>
                   </div>
-                  {/* Editor */}
-                  <textarea
-                    value={currentContent}
-                    onChange={e => {
-                      if (currentFile) setEditedContents(prev => ({ ...prev, [currentFile.path]: e.target.value }));
-                    }}
-                    className="flex-1 bg-transparent text-green-200/80 font-mono text-[11px] p-4 resize-none focus:outline-none leading-relaxed w-full"
-                    spellCheck={false}
-                  />
+                  <button
+                    onClick={() => { if (prompt.trim()) setStep(1); }}
+                    disabled={!prompt.trim()}
+                    className="flex items-center gap-2.5 px-7 py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-black text-base shadow-xl shadow-pink-400/30 hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    Next <ChevronRight className="w-5 h-5" />
+                  </button>
                 </div>
-              )}
+              </div>
 
-              {/* ── Preview panel ── */}
-              {(viewMode === 'preview' || viewMode === 'split') && (
-                <div className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2' : 'flex-1'}`}>
-                  {/* Preview chrome bar */}
-                  <div className="flex items-center gap-2 px-3 py-1.5 border-b border-white/6 bg-[#0a0a15] flex-shrink-0">
-                    <Eye className="w-3.5 h-3.5 text-gray-700 flex-shrink-0" />
-                    <span className="text-xs text-gray-700 font-mono truncate flex-1">{projectName}</span>
-                    <button onClick={() => {
-                      const w = window.open('', '_blank');
-                      if (w) { w.document.write(previewHTML); w.document.close(); }
-                    }} className="flex-shrink-0 p-1 hover:bg-white/8 rounded text-gray-700 hover:text-gray-400 transition-all" title="Open in new tab">
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                  <iframe
-                    srcDoc={previewHTML}
-                    className="flex-1 w-full border-0 bg-white"
-                    title="Preview"
-                    sandbox="allow-scripts allow-forms"
-                  />
-                </div>
-              )}
+              {/* Quick ideas */}
+              <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { icon: '🛒', label: 'E-commerce', desc: 'Product grid & cart' },
+                  { icon: '💼', label: 'Portfolio', desc: 'Projects & contact' },
+                  { icon: '📊', label: 'Dashboard', desc: 'Stats & analytics' },
+                  { icon: '🎨', label: 'Creative', desc: 'Bold animations' },
+                ].map(s => (
+                  <button key={s.label}
+                    onClick={() => { setPrompt(`${s.label} — ${s.desc}, modern responsive design with smooth animations and professional look`); setTimeout(() => setStep(1), 50); }}
+                    className="flex flex-col items-center gap-2 p-4 glass rounded-2xl border border-white/40 hover:border-pink-300/50 hover:shadow-md transition-all group text-center">
+                    <span className="text-2xl">{s.icon}</span>
+                    <p className="text-xs font-bold text-gray-700 group-hover:text-pink-600 transition-colors">{s.label}</p>
+                    <p className="text-[10px] text-gray-400">{s.desc}</p>
+                  </button>
+                ))}
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
-        {/* ════ BOTTOM PROMPT BAR ════════════════════════════════════════════ */}
-        <div className="flex-shrink-0 border-t border-white/6 bg-[#0a0a15] px-4 py-3">
-          {/* Error */}
-          {error && (
-            <div className="flex items-start gap-2 mb-2.5 px-3 py-2 bg-red-500/8 border border-red-500/20 rounded-xl">
-              <AlertCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-red-400 flex-1">{error}</p>
-              {error.includes('coin') && (
-                <button onClick={() => setShowPlans(true)} className="text-[11px] font-bold text-pink-400 hover:underline flex-shrink-0">Plans →</button>
-              )}
-              <button onClick={() => setError('')} className="flex-shrink-0 text-gray-600 hover:text-gray-400"><X className="w-3.5 h-3.5" /></button>
-            </div>
-          )}
+        {/* ── STEP 1: Tech Stack ── */}
+        {step === 1 && (
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 animate-fade-in">
+            <div className="w-full max-w-xl mx-auto">
+              {/* Back + prompt preview */}
+              <button onClick={() => setStep(0)} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-pink-500 transition-colors mb-6 font-medium">
+                <ArrowLeft className="w-4 h-4" /> Edit prompt
+              </button>
+              <div className="glass border border-white/40 rounded-2xl px-4 py-3 mb-8 flex items-start gap-3">
+                <span className="text-lg flex-shrink-0 mt-0.5">💬</span>
+                <p className="text-sm text-gray-600 leading-relaxed line-clamp-2">{prompt}</p>
+              </div>
 
-          <div className="flex flex-col gap-2.5">
-            {/* Controls row — tech preset + model + coins */}
-            <div className="flex items-center gap-2 flex-wrap">
-              {/* Tech preset chips */}
-              <div className="flex items-center gap-1 bg-white/4 rounded-lg p-0.5">
-                {TECH_PRESETS.map(t => (
-                  <button key={t.id} onClick={() => setTechPreset(t.id)}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all whitespace-nowrap ${
-                      techPreset === t.id ? `bg-white/15 ${t.color}` : 'text-gray-700 hover:text-gray-500'
+              <div className="text-center mb-8">
+                <h2 className="text-2xl sm:text-3xl font-black text-gray-800 mb-2">Pick your tech stack</h2>
+                <p className="text-gray-500 text-sm">What framework should DANI use?</p>
+              </div>
+
+              <div className="space-y-3">
+                {TECH_PRESETS.map(preset => (
+                  <button key={preset.id} onClick={() => setTechPreset(preset.id)}
+                    className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${
+                      techPreset === preset.id
+                        ? 'glass border-pink-400/60 shadow-lg shadow-pink-200/30'
+                        : 'glass border-white/40 hover:border-pink-200/60'
                     }`}>
-                    {t.short}
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${preset.color} flex items-center justify-center text-xl shadow-md flex-shrink-0`}>
+                      {preset.emoji}
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="font-black text-gray-800">{preset.short}</p>
+                      <p className="text-xs text-gray-500">{preset.label}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{preset.desc}</p>
+                    </div>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
+                      techPreset === preset.id ? 'bg-gradient-to-br from-pink-500 to-purple-600 border-pink-400' : 'border-gray-300'
+                    }`}>
+                      {techPreset === preset.id && <Check className="w-3 h-3 text-white" />}
+                    </div>
                   </button>
                 ))}
               </div>
 
-              <div className="w-px h-4 bg-white/10" />
+              <button onClick={() => setStep(2)}
+                className="w-full mt-6 flex items-center justify-center gap-2.5 py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-black text-base shadow-xl shadow-pink-400/30 hover:from-pink-600 hover:to-purple-700 transition-all">
+                Next — Choose Model <ChevronRight className="w-5 h-5" />
+              </button>
+            </div>
+          </div>
+        )}
 
-              {/* Model chips */}
-              <div className="flex items-center gap-1">
-                {MODELS.map(m => {
+        {/* ── STEP 2: Model Selection ── */}
+        {step === 2 && (
+          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 animate-fade-in">
+            <div className="w-full max-w-xl mx-auto">
+              <button onClick={() => setStep(1)} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-pink-500 transition-colors mb-6 font-medium">
+                <ArrowLeft className="w-4 h-4" /> Back to stack
+              </button>
+
+              <div className="text-center mb-8">
+                <h2 className="text-2xl sm:text-3xl font-black text-gray-800 mb-2">Choose your AI model</h2>
+                <p className="text-gray-500 text-sm">Different models, different powers 💫</p>
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div className="flex items-center gap-2 mb-4 px-4 py-3 glass border border-red-200 rounded-2xl">
+                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                  <p className="text-sm text-red-600 flex-1">{error}</p>
+                  <button onClick={() => setError('')}><X className="w-4 h-4 text-gray-400" /></button>
+                </div>
+              )}
+
+              <div className="space-y-3">
+                {MODELS.map((m, idx) => {
                   const Icon = m.icon;
                   const active = model === m.id;
                   return (
                     <button key={m.id} onClick={() => setModel(m.id)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-semibold border transition-all whitespace-nowrap ${
-                        active ? m.activePill : m.pill + ' hover:opacity-80'
-                      }`}>
-                      <Icon className="w-3 h-3" />
-                      {m.name}
-                      <span className={`text-[9px] ${active ? 'text-inherit opacity-70' : 'text-gray-700'}`}>· {m.cost}🪙</span>
+                      className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${
+                        active ? 'glass shadow-lg' : 'glass border-white/40 hover:border-pink-200/60'
+                      } ${active ? 'border-pink-400/60 shadow-pink-200/30' : ''}`}>
+                      <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${m.color} flex items-center justify-center shadow-md flex-shrink-0`}>
+                        <Icon className="w-6 h-6 text-white" />
+                      </div>
+                      <div className="flex-1 text-left">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <p className="font-black text-gray-800">{m.name}</p>
+                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${m.badgeColor}`}>{m.badge}</span>
+                          {idx === 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold">⭐ Top</span>}
+                        </div>
+                        <p className="text-xs font-semibold text-gray-600">{m.tagline}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">{m.desc}</p>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                        <span className="text-sm font-black text-gray-700">{m.cost} 🪙</span>
+                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
+                          active ? 'bg-gradient-to-br from-pink-500 to-purple-600 border-pink-400' : 'border-gray-300'
+                        }`}>
+                          {active && <Check className="w-3 h-3 text-white" />}
+                        </div>
+                      </div>
                     </button>
                   );
                 })}
               </div>
 
-              <div className="ml-auto flex items-center gap-1.5">
-                {coins !== null && (
-                  <button onClick={() => setShowPlans(true)}
-                    className="flex items-center gap-1 px-2 py-1 rounded-lg bg-yellow-500/8 border border-yellow-500/15 hover:border-yellow-500/30 transition-all text-[11px] text-yellow-500 font-semibold">
-                    {coins.toLocaleString()} 🪙
-                  </button>
-                )}
+              {/* Coin balance */}
+              <div className="flex items-center justify-between mt-4 px-1">
+                <p className="text-xs text-gray-400">
+                  Balance: <span className="font-bold text-gray-700">{coins === null ? '—' : coins.toLocaleString()} coins</span>
+                </p>
+                <button onClick={() => setShowPlans(true)} className="text-xs font-bold text-pink-500 hover:underline">
+                  Get more coins →
+                </button>
               </div>
-            </div>
 
-            {/* Prompt input row */}
-            <div className="flex items-end gap-2.5 bg-white/4 border border-white/8 focus-within:border-pink-500/40 rounded-2xl px-4 py-3 transition-all">
-              <textarea
-                ref={promptRef}
-                value={prompt}
-                onChange={e => setPrompt(e.target.value)}
-                onKeyDown={handlePromptKey}
-                placeholder="Describe the website or app you want to build… (⌘↵ to send)"
-                rows={2}
-                className="flex-1 bg-transparent text-sm text-white placeholder-gray-700 resize-none focus:outline-none leading-relaxed min-h-[44px] max-h-32"
-              />
               <button
                 onClick={handleGenerate}
-                disabled={isGenerating || !prompt.trim()}
-                className="flex-shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 text-white flex items-center justify-center hover:from-pink-600 hover:to-purple-700 transition-all shadow-lg shadow-pink-500/20 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Generate (⌘↵)"
+                disabled={coins !== null && coins < selectedModel.cost}
+                className="w-full mt-6 flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-black text-base shadow-xl shadow-pink-400/30 hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isGenerating
-                  ? <Loader2 className="w-4 h-4 animate-spin" />
-                  : <SendHorizonal className="w-4 h-4" />}
+                <Sparkles className="w-5 h-5" />
+                Build with {selectedModel.name} · {selectedModel.cost} 🪙
               </button>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* ── STEP 3: Generating + Results ── */}
+        {step === 3 && (
+          <div className="flex-1 flex flex-col overflow-hidden animate-fade-in">
+
+            {/* Generating state */}
+            {isGenerating && (
+              <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
+                {/* Live code stream */}
+                <div className="flex-1 flex flex-col overflow-hidden" style={{ background: 'linear-gradient(135deg, #1a0a2e 0%, #0d001a 100%)' }}>
+                  <div className="flex items-center gap-3 px-5 py-3 border-b border-white/10 flex-shrink-0">
+                    <div className="flex gap-1.5">
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-400/70" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/70" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-400/70" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 rounded-full bg-pink-400 animate-pulse" />
+                      <span className="text-xs text-gray-400 font-mono">DANI is writing your code...</span>
+                    </div>
+                    <div className="ml-auto text-xs text-gray-600 font-mono">{selectedPreset.label}</div>
+                  </div>
+                  <pre
+                    ref={genStreamRef}
+                    className="flex-1 overflow-y-auto p-5 text-xs font-mono leading-relaxed text-green-300 whitespace-pre-wrap break-all"
+                    style={{ scrollbarWidth: 'none' }}
+                  >
+                    {streamDisplayed}
+                    {!streamDone && <span className="inline-block w-2 h-4 bg-pink-400 ml-0.5 align-text-bottom animate-pulse" />}
+                  </pre>
+                </div>
+
+                {/* Status sidebar */}
+                <div className="lg:w-72 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-white/30 glass flex flex-col items-center justify-center gap-6 p-8">
+                  <div className="relative">
+                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-pink-400 via-purple-500 to-blue-500 animate-pulse shadow-2xl shadow-purple-400/40" />
+                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 animate-ping opacity-20" />
+                    <div className="absolute inset-4 rounded-full glass flex items-center justify-center">
+                      <Loader2 className="w-8 h-8 text-white animate-spin" />
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <p className="font-black text-gray-800 text-lg">Building... ✨</p>
+                    <p className="text-sm font-semibold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent mt-1">
+                      {selectedModel.name}
+                    </p>
+                    <p className="text-xs text-gray-400 mt-2">{selectedPreset.label}</p>
+                    <p className="text-xs text-gray-400">{selectedModel.cost} coins · ~15 seconds</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Results state */}
+            {!isGenerating && hasFiles && (
+              <div className="flex-1 flex flex-col overflow-hidden">
+                {/* Toolbar */}
+                <div className="flex items-center gap-2 px-4 py-2 glass border-b border-white/30 flex-shrink-0">
+                  <button onClick={() => setStep(0)}
+                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-pink-500 transition-colors font-medium mr-1">
+                    <Plus className="w-3.5 h-3.5" /> New
+                  </button>
+
+                  {/* File tabs */}
+                  <div className="flex items-center gap-1 flex-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+                    {generatedFiles.map((f, i) => (
+                      <button key={i} onClick={() => setSelectedFileIdx(i)}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono whitespace-nowrap transition-all flex-shrink-0 ${
+                          selectedFileIdx === i
+                            ? 'bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-pink-700 border border-pink-300/40'
+                            : 'text-gray-500 hover:text-gray-700 hover:glass hover:border hover:border-white/40'
+                        }`}>
+                        <FileCode className="w-3 h-3" />
+                        {f.path}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* View mode */}
+                  <div className="flex items-center bg-white/60 rounded-lg p-0.5 gap-0.5 flex-shrink-0 border border-white/40">
+                    {(['code', 'split', 'preview'] as const).map(v => (
+                      <button key={v} onClick={() => setViewMode(v)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1 ${
+                          viewMode === v ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                        }`}>
+                        {v === 'code' && <Code2 className="w-3 h-3" />}
+                        {v === 'preview' && <Eye className="w-3 h-3" />}
+                        {v === 'code' ? 'Code' : v === 'split' ? 'Split' : 'Preview'}
+                      </button>
+                    ))}
+                  </div>
+
+                  {currentFile && <CopyBtn text={currentContent} />}
+                </div>
+
+                {/* Editor + Preview */}
+                <div className="flex-1 flex overflow-hidden">
+                  {(viewMode === 'code' || viewMode === 'split') && (
+                    <div className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2 border-r border-white/30' : 'flex-1'}`}
+                      style={{ background: 'linear-gradient(135deg, #1a0a2e 0%, #0d001a 100%)' }}>
+                      <textarea
+                        value={currentContent}
+                        onChange={e => { if (currentFile) setEditedContents(prev => ({ ...prev, [currentFile.path]: e.target.value })); }}
+                        className="flex-1 bg-transparent text-green-300 font-mono text-xs sm:text-[13px] p-5 resize-none focus:outline-none leading-relaxed w-full"
+                        spellCheck={false}
+                      />
+                    </div>
+                  )}
+
+                  {(viewMode === 'preview' || viewMode === 'split') && (
+                    <div className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2' : 'flex-1'}`}>
+                      <div className="flex items-center gap-2 px-3 py-1.5 glass border-b border-white/30 flex-shrink-0">
+                        <div className="flex gap-1">
+                          <div className="w-2.5 h-2.5 rounded-full bg-red-400/60" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/60" />
+                          <div className="w-2.5 h-2.5 rounded-full bg-green-400/60" />
+                        </div>
+                        <div className="flex-1 flex items-center gap-2 bg-white/60 rounded-lg px-3 py-1 border border-white/40">
+                          <Globe className="w-3 h-3 text-gray-400" />
+                          <span className="text-[11px] font-mono text-gray-500 truncate">{projectName}</span>
+                        </div>
+                        <button
+                          onClick={() => { const w = window.open('', '_blank'); if (w) { w.document.write(previewHTML); w.document.close(); } }}
+                          className="p-1 glass rounded hover:bg-white/60 transition-all border border-white/30"
+                          title="Open in new tab">
+                          <ChevronRight className="w-3.5 h-3.5 text-gray-500" />
+                        </button>
+                      </div>
+                      <iframe
+                        srcDoc={previewHTML}
+                        className="flex-1 w-full border-0 bg-white"
+                        title="Preview"
+                        sandbox="allow-scripts allow-forms"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* If error on step 3 (no files) */}
+            {!isGenerating && !hasFiles && (
+              <div className="flex-1 flex items-center justify-center p-8">
+                <div className="glass rounded-3xl border border-white/40 p-10 text-center max-w-sm">
+                  <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
+                  <h3 className="font-bold text-gray-800 mb-2">Something went wrong</h3>
+                  <p className="text-sm text-gray-500 mb-6">{error || 'Generation failed. Please try again.'}</p>
+                  <button onClick={() => { setStep(2); setError(''); }}
+                    className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg">
+                    Try Again
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
