@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Sparkles, Plus, Search, Trash2, Volume2, Heart, Frown,
-  Smile, Zap, Download, ImageIcon, Copy, Check, Menu, X, MessageCircle
+  Smile, Zap, Download, ImageIcon, Copy, Check, Menu, X, MessageCircle,
+  VideoIcon, Play
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
@@ -160,11 +161,97 @@ function renderMarkdown(text: string): React.ReactNode[] {
   return nodes;
 }
 
+// ─── Video Message Bubble ────────────────────────────────────────────────────
+function VideoMessage({ msg }: { msg: ChatMessage }) {
+  const handleDownload = () => {
+    if (!msg.videoUrl) return;
+    const a = document.createElement('a');
+    a.href = msg.videoUrl;
+    a.download = `dani-${(msg.videoPrompt || 'video').substring(0, 30).replace(/[^a-z0-9]/gi, '_')}.mp4`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
+  return (
+    <div className="space-y-3">
+      <p className="text-base font-medium flex items-center gap-2">
+        🎬 I&apos;ve generated a video for you!
+      </p>
+      {msg.isGeneratingVideo ? (
+        <div className="flex flex-col items-start gap-3 py-4 px-1">
+          <div className="flex gap-2 items-center">
+            <div className="flex gap-1.5">
+              {[0, 120, 240].map(delay => (
+                <div
+                  key={delay}
+                  className="w-3 h-3 rounded-full bg-gradient-to-r from-pink-400 to-purple-500 animate-bounce"
+                  style={{ animationDelay: `${delay}ms` }}
+                />
+              ))}
+            </div>
+            <span className="text-sm text-gray-500 italic animate-pulse">Generating your video... this may take a moment ✨</span>
+          </div>
+          <div className="w-full max-w-xs h-48 rounded-2xl bg-gradient-to-br from-purple-200 via-pink-200 to-blue-200 animate-pulse flex items-center justify-center">
+            <Play className="w-10 h-10 text-purple-300" />
+          </div>
+        </div>
+      ) : msg.videoUrl ? (
+        <div className="rounded-2xl overflow-hidden max-w-xs shadow-lg border border-white/30 bg-black">
+          <div className="relative group/vid">
+            <video
+              src={msg.videoUrl}
+              controls
+              className="w-full rounded-t-2xl block"
+              style={{ maxHeight: '280px' }}
+            />
+            {/* DANI watermark */}
+            <div className="absolute top-2 right-2 bg-black/60 backdrop-blur-sm px-2.5 py-1 rounded-full pointer-events-none">
+              <span
+                className="text-xs font-bold tracking-widest uppercase"
+                style={{
+                  background: 'linear-gradient(135deg, #ff69b4, #c084fc, #f9a8d4)',
+                  WebkitBackgroundClip: 'text',
+                  WebkitTextFillColor: 'transparent',
+                  backgroundClip: 'text',
+                }}
+              >
+                DANI
+              </span>
+            </div>
+          </div>
+          {/* Caption bar */}
+          <div className="px-4 py-2.5 flex items-center justify-between gap-3 border-t border-white/10 bg-white/10 backdrop-blur-sm">
+            <p className="text-xs text-gray-300 italic truncate flex-1">
+              🎬 &quot;{(msg.videoPrompt || '').substring(0, 60)}{(msg.videoPrompt || '').length > 60 ? '...' : ''}&quot;
+            </p>
+            <button
+              onClick={handleDownload}
+              className="flex-shrink-0 p-1.5 bg-white/10 hover:bg-white/25 rounded-lg transition-all"
+              title="Download video"
+            >
+              <Download className="w-3.5 h-3.5 text-white" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center gap-2 text-red-400 text-sm">
+          <VideoIcon className="w-4 h-4" />
+          <span>Video generation failed. Try again!</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface ChatMessage extends Message {
   imageUrl?: string;
   imagePrompt?: string;
   isGeneratingImage?: boolean;
+  videoUrl?: string;
+  videoPrompt?: string;
+  isGeneratingVideo?: boolean;
 }
 
 // ─── Image Message Bubble ─────────────────────────────────────────────────────
@@ -375,10 +462,36 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
     }
   };
 
+  const isVideoRequest = (text: string): boolean => {
+    return /\b(generate|create|make|produce|render|show me|give me)\b.{0,50}\b(video|clip|animation|movie|reel|short film|animated)\b/i.test(text)
+      || /\b(video|clip|reel)\b.{0,30}\b(of|showing|about|featuring|with)\b/i.test(text)
+      || /\bmake.{0,10}(a|an)?\s+video\b/i.test(text)
+      || /\bvideo\s+(gen|generation)\b/i.test(text);
+  };
+
   const isImageRequest = (text: string): boolean => {
     const lower = text.toLowerCase();
     return /\b(generate|create|make|draw|design|show me|paint|produce|render)\b.{0,40}\b(image|photo|picture|illustration|artwork|drawing|portrait|wallpaper|visual|art)\b/.test(lower)
       || /\b(image|picture|photo|art)\b.{0,30}\b(of|showing|with|about|featuring)\b/.test(lower);
+  };
+
+  const generateVideoInChat = async (prompt: string, messageId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-video-ai', {
+        body: { prompt }
+      });
+      if (error) throw error;
+      const videoUrl = data?.video_url;
+      if (!videoUrl) throw new Error('No video returned');
+      setLocalMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, isGeneratingVideo: false, videoUrl, videoPrompt: prompt } : m
+      ));
+    } catch (err) {
+      console.error('Video generation error:', err);
+      setLocalMessages(prev => prev.map(m =>
+        m.id === messageId ? { ...m, isGeneratingVideo: false, videoUrl: undefined } : m
+      ));
+    }
   };
 
   const generateImageInChat = async (prompt: string, messageId: string) => {
@@ -452,6 +565,7 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
 
       let aiText: string = data.message || '';
       let imageRequest: { prompt: string } | null = null;
+      let videoRequest: { prompt: string } | null = null;
 
       // Check if AI returned a JSON image_request
       try {
@@ -464,8 +578,17 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
         }
       } catch { /* not JSON */ }
 
-      // Frontend fallback detection
-      if (!imageRequest && isImageRequest(userInput)) {
+      // Video detection (before image fallback)
+      if (!videoRequest && isVideoRequest(userInput)) {
+        const cleaned = userInput
+          .replace(/\b(generate|create|make|produce|render|show me|give me)\b/gi, '')
+          .replace(/\b(a|an|the)?\s*(video|clip|animation|movie|reel)(\s+(of|showing|about|featuring|with))?\s*/gi, '')
+          .trim() || userInput;
+        videoRequest = { prompt: cleaned };
+      }
+
+      // Frontend fallback image detection (only if not a video request)
+      if (!imageRequest && !videoRequest && isImageRequest(userInput)) {
         const cleaned = userInput
           .replace(/\b(generate|create|make|draw|design|show me|paint|produce|render)\b/gi, '')
           .replace(/\b(an?|the)\s+(image|photo|picture|illustration|artwork|drawing|portrait|wallpaper|visual|art)(\s+(of|showing|with|about|featuring))?\s*/gi, '')
@@ -475,7 +598,19 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
 
       const msgId = (Date.now() + 1).toString();
 
-      if (imageRequest) {
+      if (videoRequest) {
+        const videoMsg: ChatMessage = {
+          id: msgId,
+          role: 'assistant',
+          content: '🎬 video',
+          videoPrompt: videoRequest.prompt,
+          isGeneratingVideo: true,
+          timestamp: new Date(),
+        };
+        setLocalMessages(prev => [...prev, videoMsg]);
+        setIsTyping(false);
+        generateVideoInChat(videoRequest!.prompt, msgId);
+      } else if (imageRequest) {
         const imageMsg: ChatMessage = {
           id: msgId,
           role: 'assistant',
@@ -663,7 +798,9 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
                     <span className="text-xs font-semibold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">DANI</span>
                   </div>
 
-                  {message.content === '🎨 image' ? (
+                  {message.content === '🎬 video' ? (
+                    <VideoMessage msg={message} />
+                  ) : message.content === '🎨 image' ? (
                     <ImageMessage msg={message} />
                   ) : (
                     <div className="leading-relaxed">{renderMarkdown(message.content)}</div>
