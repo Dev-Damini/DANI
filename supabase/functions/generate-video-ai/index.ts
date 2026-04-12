@@ -2,24 +2,20 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req) => {
   // 1. Handle Preflight
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
     const { prompt } = await req.json();
-
-    // 2. Pull the specific Video API Key
     const videoApiKey = Deno.env.get('ONSPACE_VIDEO_API_KEY');
     const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL');
 
     if (!videoApiKey || !baseUrl) {
-      throw new Error('Video API configuration missing in OnSpace Secrets');
+      throw new Error('CONFIG_ERROR: Missing Keys in Cloud Secrets');
     }
 
-    console.log(`Calling Gemini Veo for prompt: ${prompt}`);
+    console.log(`Sending Video Prompt: ${prompt}`);
 
-    // 3. Exact fetch structure for Gemini Veo via OnSpace
+    // 2. The Fetch Call
     const response = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -27,55 +23,55 @@ Deno.serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/veo-1',
-        messages: [
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        // Ensuring the API knows to generate a video
-        modalities: ['video'],
+        model: 'google/veo-1', // Ensure this is the exact model name OnSpace expects
+        messages: [{ role: 'user', content: prompt }],
+        // Adding both common formats for safety
+        modalities: ['video'], 
       }),
     });
 
-    const data = await response.json();
-
+    // 3. Robust Error Handling (Avoids the 500 crash)
     if (!response.ok) {
-      console.error('API Error Response:', data);
-      throw new Error(data.error?.message || 'The AI service failed to generate video');
+      const errorData = await response.text();
+      console.error('API Error details:', errorData);
+      throw new Error(`API returned ${response.status}: ${errorData}`);
     }
 
-    // 4. MAPPING DATA TO MATCH YOUR FRONTEND
-    // Your ChatTab.tsx expects "video_url" inside the response
-    const videoUrl = data?.choices?.[0]?.message?.videos?.[0]?.video_url?.url || 
-                     data?.choices?.[0]?.message?.content;
+    const data = await response.json();
+    console.log('API Raw Response:', JSON.stringify(data));
 
-    if (!videoUrl) {
-      throw new Error('Video generated but no URL found in response');
+    // 4. THE DEEP SCAN (Find the video URL no matter where they hide it)
+    let finalVideoUrl = "";
+
+    // Check Choice 1: The standard multimodal path
+    if (data?.choices?.[0]?.message?.videos?.[0]?.video_url?.url) {
+       finalVideoUrl = data.choices[0].message.videos[0].video_url.url;
+    } 
+    // Check Choice 2: The standard "content" path (sometimes it's just a string)
+    else if (data?.choices?.[0]?.message?.content && data.choices[0].message.content.includes('http')) {
+       finalVideoUrl = data.choices[0].message.content;
+    }
+    // Check Choice 3: The 'output' or 'result' path
+    else if (data?.output || data?.result) {
+       finalVideoUrl = data.output || data.result;
     }
 
+    if (!finalVideoUrl) {
+      console.error('Data structure received:', data);
+      throw new Error('Video was created but the URL is missing from the response.');
+    }
+
+    // 5. Send back to DANI UI
     return new Response(
-      JSON.stringify({ video_url: videoUrl }),
-      { 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
-      }
+      JSON.stringify({ video_url: finalVideoUrl }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error: any) {
-    console.error('Edge Function Crash:', error.message);
+    console.error('CRITICAL FUNCTION ERROR:', error.message);
     return new Response(
       JSON.stringify({ error: error.message }),
-      { 
-        status: 500, 
-        headers: { 
-          ...corsHeaders, 
-          'Content-Type': 'application/json' 
-        } 
-      }
+      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
 });
