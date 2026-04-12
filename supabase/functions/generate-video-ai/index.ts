@@ -1,3 +1,4 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req) => {
@@ -15,63 +16,53 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`Generating video for prompt: "${prompt}"`);
+    // 1. CALL THE SHARED BASE URL AND THE UNIQUE VIDEO KEY
+    const videoApiKey = Deno.env.get('ONSPACE_VIDEO_API_KEY');
+    const baseUrl = Deno.env.get('ONSPACE_AI_BASE_URL'); // Using the existing shared base URL
 
-    const response = await fetch('https://daminicodes.vercel.app/api/veo', {
+    if (!videoApiKey || !baseUrl) {
+      throw new Error('Video configuration missing in Cloud Secrets');
+    }
+
+    console.log(`Generating video with specialized Video Key...`);
+
+    const aiResponse = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
+        'Authorization': `Bearer ${videoApiKey}`, // Injected Video Key
         'Content-Type': 'application/json',
-        'Accept': 'application/json',
       },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({
+        model: 'google/veo-1', 
+        modalities: ['video', 'text'],
+        messages: [{ role: 'user', content: prompt }],
+      }),
     });
 
-    console.log('Veo API status:', response.status);
-
-    if (!response.ok) {
-      const errText = await response.text();
-      console.error('Veo API error:', errText);
-      throw new Error(`Veo API error (${response.status}): ${errText}`);
+    if (!aiResponse.ok) {
+      const errorText = await aiResponse.text();
+      throw new Error(`OnSpace API error: ${errorText}`);
     }
 
-    const contentType = response.headers.get('content-type') || '';
-    console.log('Veo response content-type:', contentType);
+    const aiData = await aiResponse.json();
+    
+    // Extract video URL based on the standard OnSpace/Gemini response structure
+    const videoUrl = aiData?.choices?.[0]?.message?.videos?.[0]?.video_url?.url || 
+                     aiData?.choices?.[0]?.message?.content?.[0]?.video_url;
 
-    // Handle both JSON (video_url) and raw video binary responses
-    if (contentType.includes('application/json')) {
-      const data = await response.json();
-      console.log('Veo JSON response keys:', Object.keys(data));
-      // Common response fields: video_url, url, videoUrl, output
-      const videoUrl = data.video_url || data.url || data.videoUrl || data.output || data.result;
-      if (!videoUrl) {
-        throw new Error(`Unexpected JSON response: ${JSON.stringify(data)}`);
-      }
-      return new Response(
-        JSON.stringify({ video_url: videoUrl }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    } else {
-      // Raw video binary — convert to base64 data URL
-      const buffer = await response.arrayBuffer();
-      const bytes = new Uint8Array(buffer);
-      let binary = '';
-      for (let i = 0; i < bytes.byteLength; i++) {
-        binary += String.fromCharCode(bytes[i]);
-      }
-      const base64 = btoa(binary);
-      const mimeType = contentType.includes('mp4') ? 'video/mp4' : contentType || 'video/mp4';
-      const dataUrl = `data:${mimeType};base64,${base64}`;
-      return new Response(
-        JSON.stringify({ video_url: dataUrl }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
+    if (!videoUrl) {
+      throw new Error('No video URL returned from the AI service');
     }
 
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : 'Video generation failed';
-    console.error('generate-video-ai error:', message);
     return new Response(
-      JSON.stringify({ error: message }),
+      JSON.stringify({ video_url: videoUrl }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
+
+  } catch (error: any) {
+    console.error('generate-video-ai error:', error.message);
+    return new Response(
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
