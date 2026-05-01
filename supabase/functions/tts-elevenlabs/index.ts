@@ -1,13 +1,12 @@
 import { corsHeaders } from '../_shared/cors.ts';
 
 Deno.serve(async (req) => {
-  // Handle CORS preflight
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const { text, voiceId } = await req.json();
+    const { text } = await req.json();
 
     if (!text) {
       return new Response(
@@ -16,58 +15,38 @@ Deno.serve(async (req) => {
       );
     }
 
-    const apiKey = Deno.env.get('ELEVENLABS_API_KEY');
-    if (!apiKey) {
-      throw new Error('ElevenLabs API key not configured');
-    }
+    // Use Beatrice TTS endpoint
+    const encodedText = encodeURIComponent(text);
+    const ttsUrl = `https://apis.prexzyvilla.site/tts/beatrice?text=${encodedText}`;
 
-    // Use caller-specified voice or default to Bella
-    const selectedVoiceId = voiceId || 'EXAVITQu4vr4xnSDxMaL';
-    console.log('Using voice ID:', selectedVoiceId);
+    console.log('Calling Beatrice TTS for text length:', text.length);
 
-    // Call ElevenLabs API
-    const response = await fetch(
-      `https://api.elevenlabs.io/v1/text-to-speech/${selectedVoiceId}`,
-      {
-        method: 'POST',
-        headers: {
-          'xi-api-key': apiKey,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          text: text,
-          model_id: 'eleven_turbo_v2',
-          voice_settings: {
-            stability: 0.4,
-            similarity_boost: 0.8,
-            style: 0.6,
-            use_speaker_boost: true,
-            speed: 1.1
-          }
-        })
-      }
-    );
+    const response = await fetch(ttsUrl, {
+      method: 'GET',
+      signal: AbortSignal.timeout(30000),
+    });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('ElevenLabs API Error:', errorText);
-      throw new Error(`ElevenLabs API request failed: ${errorText}`);
+      console.error('Beatrice TTS error:', errorText);
+      throw new Error(`TTS request failed: ${response.status}`);
     }
 
-    // Return the audio stream
+    const contentType = response.headers.get('content-type') || 'audio/mpeg';
     const audioBlob = await response.blob();
 
     return new Response(audioBlob, {
       headers: {
         ...corsHeaders,
-        'Content-Type': 'audio/mpeg',
+        'Content-Type': contentType.startsWith('audio') ? contentType : 'audio/mpeg',
       }
     });
 
-  } catch (error) {
-    console.error('Error:', error);
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Internal server error';
+    console.error('TTS error:', message);
     return new Response(
-      JSON.stringify({ error: error.message || 'Internal server error' }),
+      JSON.stringify({ error: message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }

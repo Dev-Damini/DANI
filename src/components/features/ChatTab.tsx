@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Send, Sparkles, Plus, Search, Trash2, Volume2, Heart, Frown,
   Smile, Zap, Download, ImageIcon, Copy, Check, Menu, X, MessageCircle,
-  VideoIcon, Play
+  VideoIcon, Play, Paperclip, Wand2
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
@@ -249,6 +249,7 @@ interface ChatMessage extends Message {
   imageUrl?: string;
   imagePrompt?: string;
   isGeneratingImage?: boolean;
+  editImageUrl?: string;
   videoUrl?: string;
   videoPrompt?: string;
   isGeneratingVideo?: boolean;
@@ -391,10 +392,13 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState<string>('neutral');
   const [messageCount, setMessageCount] = useState(0);
+  const [uploadedImageUrl, setUploadedImageUrl] = useState<string | null>(null);
+  const [uploadedImageName, setUploadedImageName] = useState<string>('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const initialized = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const welcomeMessage: ChatMessage = {
     id: 'welcome',
@@ -462,6 +466,25 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
     }
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      setUploadedImageUrl(ev.target?.result as string);
+      setUploadedImageName(file.name);
+    };
+    reader.readAsDataURL(file);
+    // reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
+  const clearUploadedImage = () => {
+    setUploadedImageUrl(null);
+    setUploadedImageName('');
+  };
+
   const isVideoRequest = (text: string): boolean => {
     return /\b(generate|create|make|produce|render|show me|give me)\b.{0,50}\b(video|clip|animation|movie|reel|short film|animated)\b/i.test(text)
       || /\b(video|clip|reel)\b.{0,30}\b(of|showing|about|featuring|with)\b/i.test(text)
@@ -494,10 +517,10 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
     }
   };
 
-  const generateImageInChat = async (prompt: string, messageId: string) => {
+  const generateImageInChat = async (prompt: string, messageId: string, editImageUrl?: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('generate-image-ai', {
-        body: { prompt, style: 'realistic' }
+        body: { prompt, style: 'realistic', ...(editImageUrl ? { editImageUrl } : {}) }
       });
       if (error) throw error;
       const imgUrl = data?.image_url;
@@ -525,7 +548,10 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
 
     setLocalMessages(prev => [...prev, userMessage]);
     const userInput = input;
+    const attachedImage = uploadedImageUrl;
     setInput('');
+    setUploadedImageUrl(null);
+    setUploadedImageName('');
     setIsTyping(true);
 
     // Auto-create conversation on first real message
@@ -564,7 +590,7 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
       }
 
       let aiText: string = data.message || '';
-      let imageRequest: { prompt: string } | null = null;
+      let imageRequest: { prompt: string; editImageUrl?: string } | null = null;
       let videoRequest: { prompt: string } | null = null;
 
       // Check if AI returned a JSON image_request
@@ -585,6 +611,12 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
           .replace(/\b(a|an|the)?\s*(video|clip|animation|movie|reel)(\s+(of|showing|about|featuring|with))?\s*/gi, '')
           .trim() || userInput;
         videoRequest = { prompt: cleaned };
+      }
+
+      // If user uploaded an image — treat as edit request
+      if (!imageRequest && !videoRequest && attachedImage) {
+        const editPrompt = userInput || 'enhance and improve this image';
+        imageRequest = { prompt: editPrompt, editImageUrl: attachedImage };
       }
 
       // Frontend fallback image detection (only if not a video request)
@@ -616,12 +648,13 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
           role: 'assistant',
           content: '🎨 image',
           imagePrompt: imageRequest.prompt,
+          editImageUrl: (imageRequest as { prompt: string; editImageUrl?: string }).editImageUrl,
           isGeneratingImage: true,
           timestamp: new Date(),
         };
         setLocalMessages(prev => [...prev, imageMsg]);
         setIsTyping(false);
-        generateImageInChat(imageRequest!.prompt, msgId);
+        generateImageInChat(imageRequest!.prompt, msgId, (imageRequest as { prompt: string; editImageUrl?: string }).editImageUrl);
       } else {
         setLocalMessages(prev => [...prev, {
           id: msgId, role: 'assistant', content: aiText, timestamp: new Date()
@@ -844,8 +877,42 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
         )}
 
         {/* Input */}
+        {/* Image upload preview */}
+        {uploadedImageUrl && (
+          <div className="mb-2 flex items-center gap-3 px-4 py-2 glass rounded-2xl border border-pink-200/50">
+            <img src={uploadedImageUrl} alt="Upload" className="w-10 h-10 rounded-lg object-cover border border-white/40" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold text-gray-700 truncate">{uploadedImageName}</p>
+              <p className="text-[10px] text-pink-500 flex items-center gap-1"><Wand2 className="w-3 h-3" />Ready to edit</p>
+            </div>
+            <button onClick={clearUploadedImage} className="p-1.5 hover:bg-red-50 text-gray-400 hover:text-red-500 rounded-lg transition-all">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
         <div className="glass rounded-2xl border-2 border-white/30 shadow-lg overflow-hidden">
           <div className="flex items-end gap-2 p-2">
+            {/* Image upload button */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              onChange={handleImageUpload}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className={`p-2.5 rounded-xl transition-all flex-shrink-0 ${
+                uploadedImageUrl
+                  ? 'bg-pink-100 text-pink-600'
+                  : 'glass border border-white/40 text-gray-400 hover:text-pink-500'
+              }`}
+              title="Upload image to edit"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+
             <div className="flex-1 flex items-center gap-2 px-3 py-2">
               <Sparkles className="w-4 h-4 text-pink-400 flex-shrink-0" />
               <input
@@ -854,7 +921,7 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyPress={handleKeyPress}
-                placeholder="Message DANI..."
+                placeholder={uploadedImageUrl ? 'Describe how to edit the image...' : 'Message DANI...'}
                 className="flex-1 bg-transparent border-none outline-none text-gray-800 placeholder-gray-400 text-base"
               />
             </div>
@@ -869,7 +936,7 @@ export default function ChatTab({ responseStyle = 'educational' }: { responseSty
             )}
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isTyping}
+              disabled={(!input.trim() && !uploadedImageUrl) || isTyping}
               className="px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl font-medium hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-md flex items-center gap-2"
             >
               <Send className="w-4 h-4" />

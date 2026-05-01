@@ -1,17 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   User, Lock, Eye, EyeOff, Save, ArrowLeft,
-  Sparkles, CheckCircle, Mic, MessageSquare, Palette
+  Sparkles, CheckCircle, Mic, MessageSquare, Palette,
+  Camera, Upload, Brain, ChevronRight, Wand2, Stars,
+  Loader2, X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import daniLogo from '@/assets/dani-logo.png';
 
 const VOICE_OPTIONS = [
-  { id: 'EXAVITQu4vr4xnSDxMaL', name: 'Bella', description: 'Warm & friendly young female', emoji: '🌸' },
-  { id: '21m00Tcm4TlvDq8ikWAM', name: 'Rachel', description: 'Calm & professional', emoji: '💼' },
-  { id: 'AZnzlk1XvdvUeBnXmlld', name: 'Domi', description: 'Strong & confident', emoji: '⚡' },
-  { id: 'MF3mGyEYCl7XYWbV9V9ub', name: 'Elli', description: 'Soft & gentle', emoji: '🌙' },
+  { id: 'beatrice', name: 'Beatrice', description: 'DANI\'s signature warm voice', emoji: '🌸', isDefault: true },
 ];
 
 const STYLE_OPTIONS = [
@@ -38,6 +37,25 @@ const STYLE_OPTIONS = [
   },
 ];
 
+// ─── SVG Icons ────────────────────────────────────────────────────────────────
+const AvatarPlaceholderSVG = ({ name }: { name: string }) => {
+  const initials = name.slice(0, 2).toUpperCase();
+  return (
+    <svg viewBox="0 0 80 80" className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="avatarGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#ec4899" />
+          <stop offset="100%" stopColor="#a855f7" />
+        </linearGradient>
+      </defs>
+      <rect width="80" height="80" fill="url(#avatarGrad)" />
+      <text x="40" y="50" textAnchor="middle" fontSize="28" fontWeight="700" fill="white" fontFamily="system-ui">
+        {initials}
+      </text>
+    </svg>
+  );
+};
+
 export default function ProfilePage() {
   const navigate = useNavigate();
   const [username, setUsername] = useState('');
@@ -47,15 +65,16 @@ export default function ProfilePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
 
-  const [selectedVoice, setSelectedVoice] = useState(
-    () => localStorage.getItem('dani-voice') || 'EXAVITQu4vr4xnSDxMaL'
-  );
   const [selectedStyle, setSelectedStyle] = useState(
     () => localStorage.getItem('dani-style') || 'educational'
   );
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsLoading(true);
@@ -63,9 +82,51 @@ export default function ProfilePage() {
       if (!user) { navigate('/auth'); return; }
       setEmail(user.email || '');
       setUsername(user.user_metadata?.username || user.email?.split('@')[0] || '');
+      setAvatarUrl(user.user_metadata?.avatar_url || null);
       setIsLoading(false);
     });
   }, [navigate]);
+
+  const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please select an image file'); return; }
+    if (file.size > 2 * 1024 * 1024) { setError('Image must be under 2MB'); return; }
+
+    setIsUploadingAvatar(true);
+    setError('');
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const ext = file.name.split('.').pop() || 'jpg';
+      const fileName = `${user.id}/avatar.${ext}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('branding')
+        .upload(fileName, file, { upsert: true, contentType: file.type });
+
+      if (uploadError) throw uploadError;
+
+      const { data: { publicUrl } } = supabase.storage.from('branding').getPublicUrl(fileName);
+      const avatarWithTs = `${publicUrl}?t=${Date.now()}`;
+
+      const { error: updateError } = await supabase.auth.updateUser({
+        data: { avatar_url: avatarWithTs }
+      });
+      if (updateError) throw updateError;
+
+      setAvatarUrl(avatarWithTs);
+      setSuccess('Profile picture updated! 💕');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setIsUploadingAvatar(false);
+      e.target.value = '';
+    }
+  };
 
   const handleSaveProfile = async () => {
     if (!username.trim()) { setError('Username cannot be empty'); return; }
@@ -83,10 +144,7 @@ export default function ProfilePage() {
 
     if (updateError) { setError(updateError.message); return; }
 
-    // Save preferences to localStorage
-    localStorage.setItem('dani-voice', selectedVoice);
     localStorage.setItem('dani-style', selectedStyle);
-
     setSuccess('Profile saved! 💕');
     setNewPassword('');
     setConfirmPassword('');
@@ -120,14 +178,72 @@ export default function ProfilePage() {
 
       <div className="container mx-auto px-4 py-8 max-w-2xl">
 
-        {/* Account Info */}
+        {/* ── Profile Picture Section ── */}
+        <section className="glass rounded-3xl p-6 border border-white/30 mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-5 flex items-center gap-2">
+            <Camera className="w-5 h-5 text-pink-500" /> Profile Picture
+          </h2>
+
+          <div className="flex items-center gap-6">
+            {/* Avatar */}
+            <div className="relative flex-shrink-0">
+              <div className="w-20 h-20 rounded-2xl overflow-hidden border-2 border-white/50 shadow-lg">
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt={username} className="w-full h-full object-cover" />
+                ) : (
+                  <AvatarPlaceholderSVG name={username || 'DA'} />
+                )}
+              </div>
+              {isUploadingAvatar && (
+                <div className="absolute inset-0 rounded-2xl bg-black/40 flex items-center justify-center">
+                  <Loader2 className="w-6 h-6 text-white animate-spin" />
+                </div>
+              )}
+            </div>
+
+            {/* Upload controls */}
+            <div className="flex-1">
+              <p className="font-semibold text-gray-800 text-sm mb-1">{username}</p>
+              <p className="text-xs text-gray-400 mb-3">JPG, PNG or WebP · Max 2MB</p>
+              <div className="flex gap-2 flex-wrap">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  onChange={handleAvatarUpload}
+                  className="hidden"
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploadingAvatar}
+                  className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-sm font-semibold shadow-md hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-50"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  {isUploadingAvatar ? 'Uploading...' : 'Upload Photo'}
+                </button>
+                {avatarUrl && (
+                  <button
+                    onClick={async () => {
+                      await supabase.auth.updateUser({ data: { avatar_url: null } });
+                      setAvatarUrl(null);
+                    }}
+                    className="flex items-center gap-2 px-4 py-2 glass border border-white/40 text-gray-600 rounded-xl text-sm font-semibold hover:bg-white/80 transition-all"
+                  >
+                    <X className="w-3.5 h-3.5" /> Remove
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Account Info ── */}
         <section className="glass rounded-3xl p-6 border border-white/30 mb-6">
           <h2 className="text-lg font-bold text-gray-800 mb-5 flex items-center gap-2">
             <User className="w-5 h-5 text-pink-500" /> Account Info
           </h2>
 
           <div className="space-y-4">
-            {/* Email (read-only) */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email</label>
               <input type="email" value={email} disabled
@@ -135,7 +251,6 @@ export default function ProfilePage() {
               <p className="text-xs text-gray-400 mt-1">Email cannot be changed</p>
             </div>
 
-            {/* Username */}
             <div>
               <label className="block text-sm font-semibold text-gray-700 mb-1.5">Username</label>
               <div className="relative">
@@ -148,7 +263,7 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* Change Password */}
+        {/* ── Change Password ── */}
         <section className="glass rounded-3xl p-6 border border-white/30 mb-6">
           <h2 className="text-lg font-bold text-gray-800 mb-5 flex items-center gap-2">
             <Lock className="w-5 h-5 text-purple-500" /> Change Password
@@ -181,7 +296,7 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* Response Style */}
+        {/* ── Response Style ── */}
         <section className="glass rounded-3xl p-6 border border-white/30 mb-6">
           <h2 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
             <MessageSquare className="w-5 h-5 text-blue-500" /> Response Style
@@ -210,41 +325,98 @@ export default function ProfilePage() {
           </div>
         </section>
 
-        {/* Voice Selection */}
+        {/* ── DANI's Voice ── */}
         <section className="glass rounded-3xl p-6 border border-white/30 mb-6">
           <h2 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
             <Mic className="w-5 h-5 text-green-500" /> DANI's Voice
           </h2>
-          <p className="text-sm text-gray-500 mb-5">Choose the voice DANI uses when speaking</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {VOICE_OPTIONS.map(voice => (
-              <button key={voice.id} onClick={() => setSelectedVoice(voice.id)}
-                className={`p-4 rounded-2xl border-2 text-left transition-all flex items-center gap-3 ${
-                  selectedVoice === voice.id
-                    ? 'border-pink-400 bg-pink-50 shadow-md'
-                    : 'border-white/40 glass hover:border-pink-200'
-                }`}>
-                <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center text-lg flex-shrink-0">
-                  {voice.emoji}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-800 text-sm">{voice.name}</p>
-                  <p className="text-xs text-gray-500 truncate">{voice.description}</p>
-                </div>
-                {selectedVoice === voice.id && (
-                  <CheckCircle className="w-4 h-4 text-pink-500 flex-shrink-0" />
-                )}
-              </button>
-            ))}
+          <p className="text-sm text-gray-500 mb-5">DANI speaks with her signature Beatrice voice</p>
+          <div className="flex items-center gap-4 p-4 glass rounded-2xl border-2 border-pink-300/50 bg-pink-50/50">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center flex-shrink-0">
+              {/* SVG mic icon */}
+              <svg viewBox="0 0 24 24" className="w-6 h-6 text-white fill-none stroke-current stroke-2">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2M12 19v4M8 23h8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-gray-800">Beatrice</p>
+              <p className="text-xs text-gray-500">DANI's signature warm & expressive voice</p>
+            </div>
+            <CheckCircle className="w-5 h-5 text-pink-500 flex-shrink-0" />
           </div>
         </section>
 
-        {/* Appearance hint */}
+        {/* ── AI Character Studio (Coming Soon) ── */}
+        <section className="glass rounded-3xl p-6 border border-white/30 mb-6 relative overflow-hidden">
+          {/* Coming soon overlay */}
+          <div className="absolute inset-0 bg-white/40 backdrop-blur-[1px] z-10 rounded-3xl flex items-center justify-center">
+            <div className="text-center">
+              <div className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-full font-bold text-sm shadow-lg mb-2">
+                <Stars className="w-4 h-4" />
+                Coming Soon
+              </div>
+              <p className="text-xs text-gray-500">Character Studio is in development</p>
+            </div>
+          </div>
+
+          <h2 className="text-lg font-bold text-gray-800 mb-1 flex items-center gap-2">
+            <Brain className="w-5 h-5 text-purple-500" />
+            <span className="bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">Character Studio</span>
+          </h2>
+          <p className="text-sm text-gray-500 mb-5">Create custom AI personas that DANI can roleplay as</p>
+
+          {/* Preview cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 opacity-60">
+            {[
+              {
+                name: 'Luna',
+                role: 'Mystical storyteller',
+                desc: 'Ancient wisdom, poetic speech, answers in riddles and metaphors',
+                grad: 'from-indigo-400 to-purple-500',
+                emoji: '🌙',
+              },
+              {
+                name: 'Spark',
+                role: 'Hype coach',
+                desc: 'High energy, motivational, always pumping you up to achieve more',
+                grad: 'from-yellow-400 to-orange-500',
+                emoji: '⚡',
+              },
+            ].map(char => (
+              <div key={char.name} className="flex items-start gap-3 p-4 glass rounded-2xl border border-white/40">
+                <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${char.grad} flex items-center justify-center text-lg flex-shrink-0`}>
+                  {char.emoji}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="font-bold text-gray-800 text-sm">{char.name}</p>
+                  <p className="text-[11px] font-semibold text-purple-500 mb-0.5">{char.role}</p>
+                  <p className="text-[10px] text-gray-400 leading-relaxed">{char.desc}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <button disabled className="w-full mt-4 flex items-center justify-center gap-2 py-3 glass border border-white/40 text-gray-400 rounded-2xl text-sm font-semibold cursor-not-allowed opacity-60">
+            <Wand2 className="w-4 h-4" /> Create New Character
+          </button>
+
+          <div className="mt-3 text-center">
+            <p className="text-xs text-gray-400">
+              Character Studio lets you craft custom personas — from a Shakespearean bard to a ruthless debate coach — and chat with DANI as that character. She'll fully embody their voice, tone, and worldview. 🌸
+            </p>
+          </div>
+        </section>
+
+        {/* ── Appearance ── */}
         <section className="glass rounded-3xl p-6 border border-white/30 mb-6 opacity-60">
           <h2 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
             <Palette className="w-5 h-5 text-orange-400" /> Appearance
           </h2>
-          <p className="text-sm text-gray-500">Theme customization — coming soon 🌸</p>
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500">Theme customization — coming soon 🌸</p>
+            <ChevronRight className="w-4 h-4 text-gray-300" />
+          </div>
         </section>
 
         {/* Feedback */}
