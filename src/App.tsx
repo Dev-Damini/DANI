@@ -6,6 +6,7 @@ import ResetPasswordPage from '@/pages/ResetPasswordPage';
 import ProfilePage from '@/pages/ProfilePage';
 import AnalyticsPage from '@/pages/AnalyticsPage';
 import SharedWebsitePage from '@/pages/SharedWebsitePage';
+import ProjectsPage from '@/pages/ProjectsPage';
 
 function App() {
   return (
@@ -18,6 +19,7 @@ function App() {
         <Route path="/profile" element={<ProfilePage />} />
         <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/share" element={<SharedWebsitePage />} />
+        <Route path="/projects" element={<ProjectsPage />} />
         <Route path="*" element={<HomePage />} />
       </Routes>
     </BrowserRouter>

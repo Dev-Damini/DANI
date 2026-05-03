@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Home, LogOut, User, Settings, Sparkles, BarChart2 } from 'lucide-react';
+import { Home, LogOut, User, Settings, Sparkles, BarChart2, FolderOpen } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import daniLogo from '@/assets/dani-logo.png';
 import ChatTab from '@/components/features/ChatTab';
@@ -13,6 +13,12 @@ const ADMIN_EMAIL = 'damibotzinc@gmail.com';
 export default function ChatPage() {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'chat' | 'image' | 'voice' | 'website'>('chat');
+
+  // Handle navigation state (e.g. from ProjectsPage opening Vibe Code)
+  useEffect(() => {
+    const state = window.history.state?.usr;
+    if (state?.openVibeCode) setActiveTab('website');
+  }, []);
   const [username, setUsername] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
@@ -116,6 +122,11 @@ export default function ChatPage() {
                 <BarChart2 className="w-5 h-5 text-purple-600" />
               </button>
             )}
+            <button onClick={() => navigate('/projects')}
+              className="p-2.5 glass rounded-full hover:bg-white/80 transition-all border border-white/30"
+              title="My Projects">
+              <FolderOpen className="w-5 h-5 text-gray-600" />
+            </button>
             <button onClick={() => navigate('/profile')}
               className="p-2.5 glass rounded-full hover:bg-white/80 transition-all border border-white/30"
               title="Profile & Settings">
