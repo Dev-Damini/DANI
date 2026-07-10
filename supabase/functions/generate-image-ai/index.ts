@@ -1,117 +1,188 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { corsHeaders } from '../_shared/cors.ts';
 
-// ─── Image Generation Endpoints (with fallbacks) ──────────────────────────────
-function getImageEndpoints(prompt: string) {
+const OMEGATECH_BASE = 'https://omegatech-api.dixonomega.tech/api/ai';
+
+// ─── Generate: nano-banana-pro ────────────────────────────────────────────────
+async function generateImage(prompt: string): Promise<string> {
   const enc = encodeURIComponent(prompt);
-  const neg = encodeURIComponent('blurry, low quality, distorted, watermark, text');
-  return [
-    { url: `https://image.pollinations.ai/prompt/${enc}?width=1024&height=1024&nologo=true&seed=${Date.now()}`, binary: true },
-    { url: `https://apis.prexzyvilla.site/ai/realistic?prompt=${enc}&negative_prompt=${neg}`, binary: false },
-    { url: `https://api.ryzendesu.vip/api/ai/imagine?prompt=${enc}`, binary: false },
-    { url: `https://api.siputzx.my.id/api/ai/text2image?prompt=${enc}`, binary: true },
-    { url: `https://widipe.com/imagine?prompt=${enc}`, binary: false },
-    { url: `https://itzpire.site/api/ai/text2img?prompt=${enc}`, binary: false },
-    { url: `https://api.nekorinn.my.id/ai/imagine?prompt=${enc}`, binary: false },
-  ];
+  console.log('Image generate with nano-banana-pro, prompt:', prompt.slice(0, 60));
+
+  // Try nano-banana-pro first (better quality)
+  try {
+    const res = await fetch(`${OMEGATECH_BASE}/nano-banana-pro?prompt=${enc}`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(30000),
+    });
+    if (res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.startsWith('image/')) {
+        const binary = await res.arrayBuffer();
+        const arr = new Uint8Array(binary);
+        const b64 = btoa(String.fromCharCode(...arr));
+        return `data:${ct};base64,${b64}`;
+      }
+      if (ct.includes('json')) {
+        const data = await res.json();
+        const url = data?.image_url || data?.url || data?.result || data?.output;
+        if (url) return url;
+        // Async task
+        if (data?.task_id) return await pollImageTask(data.task_id);
+      }
+    }
+  } catch (e) {
+    console.log('nano-banana-pro failed:', (e as Error).message);
+  }
+
+  // Fallback: flux-pro2 with polling
+  try {
+    const initRes = await fetch(`${OMEGATECH_BASE}/flux-pro2?prompt=${enc}`, {
+      signal: AbortSignal.timeout(20000),
+    });
+    if (initRes.ok) {
+      const initData = await initRes.json();
+      if (initData?.task_id) return await pollImageTask(initData.task_id);
+    }
+  } catch (e) {
+    console.log('flux-pro2 failed:', (e as Error).message);
+  }
+
+  // Last fallback: pollinations
+  const pollinationsUrl = `https://image.pollinations.ai/prompt/${enc}?width=1024&height=1024&nologo=true&model=flux&seed=${Date.now()}`;
+  const polRes = await fetch(pollinationsUrl, { signal: AbortSignal.timeout(25000) });
+  if (polRes.ok) {
+    const ct = polRes.headers.get('content-type') || 'image/jpeg';
+    const binary = await polRes.arrayBuffer();
+    const arr = new Uint8Array(binary);
+    const b64 = btoa(String.fromCharCode(...arr));
+    return `data:${ct};base64,${b64}`;
+  }
+
+  throw new Error('All image generation methods failed');
 }
 
-function extractImageUrl(data: unknown): string | null {
-  if (!data || typeof data !== 'object') return null;
-  const obj = data as Record<string, unknown>;
-  const keys = ['image', 'image_url', 'url', 'result', 'data', 'output', 'link', 'img'];
-  for (const key of keys) {
-    const val = obj[key];
-    if (typeof val === 'string' && (val.startsWith('http') || val.startsWith('data:'))) return val;
-    if (val && typeof val === 'object') {
-      const nested = extractImageUrl(val);
-      if (nested) return nested;
+// ─── Edit: nano-banana (simple) ───────────────────────────────────────────────
+async function editImage(imageUrl: string, prompt: string): Promise<string> {
+  console.log('Image edit with nano-banana, prompt:', prompt.slice(0, 60));
+
+  // If data URL, upload to get a real URL
+  let uploadedUrl = imageUrl;
+  if (imageUrl.startsWith('data:')) {
+    try {
+      // Try to upload to get a CDN URL
+      const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, '');
+      const binary = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+      const blob = new Blob([binary], { type: 'image/png' });
+      const formData = new FormData();
+      formData.append('file', blob, 'image.png');
+
+      // Try multiple upload services
+      const uploadRes = await fetch('https://tmpfiles.org/api/v1/upload', {
+        method: 'POST',
+        body: formData,
+        signal: AbortSignal.timeout(15000),
+      });
+      if (uploadRes.ok) {
+        const uploadData = await uploadRes.json();
+        const tmpUrl = uploadData?.data?.url;
+        if (tmpUrl) {
+          // Convert tmpfiles.org URL to direct download
+          uploadedUrl = tmpUrl.replace('tmpfiles.org/', 'tmpfiles.org/dl/');
+        }
+      }
+    } catch (e) {
+      console.log('Upload failed, trying direct:', (e as Error).message);
     }
   }
-  return null;
-}
 
-// ─── Flux Image Edit (polling) ────────────────────────────────────────────────
-async function fluxEditImage(imageUrl: string, prompt: string): Promise<string> {
-  const baseUrl = 'https://omegatech-api.dixonomega.tech/api/ai';
+  const enc = encodeURIComponent(prompt);
+  const imgEnc = encodeURIComponent(uploadedUrl);
 
-  // Step 1: Upload image to tmp host
-  let uploadedUrl = imageUrl;
+  // nano-banana edit endpoint
+  try {
+    const res = await fetch(`${OMEGATECH_BASE}/nano-banana?image=${imgEnc}&prompt=${enc}`, {
+      method: 'GET',
+      signal: AbortSignal.timeout(45000),
+    });
+    if (res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.startsWith('image/')) {
+        const binary = await res.arrayBuffer();
+        const arr = new Uint8Array(binary);
+        const b64 = btoa(String.fromCharCode(...arr));
+        return `data:${ct};base64,${b64}`;
+      }
+      if (ct.includes('json')) {
+        const data = await res.json();
+        const url = data?.image_url || data?.url || data?.result || data?.output;
+        if (url) return url;
+        if (data?.task_id) return await pollImageTask(data.task_id);
+      }
+    }
+  } catch (e) {
+    console.log('nano-banana edit failed:', (e as Error).message);
+  }
 
-  // If it's a data URL, we need to upload it
-  if (imageUrl.startsWith('data:')) {
-    const uploadRes = await fetch('https://tmp.malvryx.dev/upload', {
+  // Fallback: nano-banana2 async edit
+  try {
+    const res = await fetch(`${OMEGATECH_BASE}/nano-banana2`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ base64: imageUrl, type: 'permanent' }),
-      signal: AbortSignal.timeout(15000),
+      body: JSON.stringify({ image: uploadedUrl, prompt }),
+      signal: AbortSignal.timeout(20000),
     });
-    if (uploadRes.ok) {
-      const uploadData = await uploadRes.json();
-      uploadedUrl = uploadData?.cdnUrl || uploadData?.directUrl || uploadData?.url || imageUrl;
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.task_id) return await pollImageTask(data.task_id);
+      const url = data?.image_url || data?.url || data?.result;
+      if (url) return url;
     }
+  } catch (e) {
+    console.log('nano-banana2 edit failed:', (e as Error).message);
   }
 
-  // Step 2: Initiate edit
-  const initRes = await fetch(`${baseUrl}/flux-pro2-edit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      image1: uploadedUrl,
-      prompt,
-      aspect_ratio: 'auto',
-    }),
-    signal: AbortSignal.timeout(20000),
-  });
-
-  if (!initRes.ok) throw new Error(`Flux edit initiation failed: ${initRes.status}`);
-  const initData = await initRes.json();
-
-  if (!initData.success || !initData.task_id) {
-    throw new Error('Flux API: no task_id returned');
-  }
-
-  const taskId = initData.task_id;
-
-  // Step 3: Poll for result (max 15 attempts × 5s = 75s)
-  for (let attempt = 0; attempt < 15; attempt++) {
-    await new Promise(r => setTimeout(r, 5000));
-    const checkRes = await fetch(`${baseUrl}/nano-banana2-result?task_id=${taskId}`, {
-      signal: AbortSignal.timeout(10000),
+  // Last fallback: flux edit
+  try {
+    const initRes = await fetch(`${OMEGATECH_BASE}/flux-pro2-edit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image1: uploadedUrl, prompt, aspect_ratio: 'auto' }),
+      signal: AbortSignal.timeout(20000),
     });
-    if (!checkRes.ok) continue;
-    const check = await checkRes.json();
-    if (check.status === 'completed' && check.image_url) return check.image_url;
-    if (check.status === 'failed') throw new Error('Flux: task failed on server');
+    if (initRes.ok) {
+      const initData = await initRes.json();
+      if (initData?.task_id) return await pollImageTask(initData.task_id);
+    }
+  } catch (e) {
+    console.log('flux-edit fallback failed:', (e as Error).message);
   }
 
-  throw new Error('Flux: generation timed out');
+  throw new Error('Image editing failed — all methods exhausted');
 }
 
-// ─── Flux Image Generate ──────────────────────────────────────────────────────
-async function fluxGenerateImage(prompt: string): Promise<string> {
-  const baseUrl = 'https://omegatech-api.dixonomega.tech/api/ai';
-  const enc = encodeURIComponent(prompt);
-
-  const initRes = await fetch(`${baseUrl}/flux-pro2?prompt=${enc}`, {
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!initRes.ok) throw new Error(`Flux generate failed: ${initRes.status}`);
-  const initData = await initRes.json();
-  if (!initData.success || !initData.task_id) throw new Error('Flux: no task_id');
-
-  const taskId = initData.task_id;
-  for (let attempt = 0; attempt < 15; attempt++) {
+// ─── Polling ─────────────────────────────────────────────────────────────────
+async function pollImageTask(taskId: string, maxAttempts = 18): Promise<string> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     await new Promise(r => setTimeout(r, 5000));
-    const checkRes = await fetch(`${baseUrl}/nano-banana2-result?task_id=${taskId}`, {
-      signal: AbortSignal.timeout(10000),
-    });
-    if (!checkRes.ok) continue;
-    const check = await checkRes.json();
-    if (check.status === 'completed' && check.image_url) return check.image_url;
-    if (check.status === 'failed') throw new Error('Flux: task failed');
+    try {
+      const res = await fetch(`${OMEGATECH_BASE}/nano-banana2-result?task_id=${taskId}`, {
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!res.ok) continue;
+      const check = await res.json();
+      console.log(`Poll ${attempt + 1}: ${check.status}`);
+      if (check.status === 'completed') {
+        const url = check.image_url || check.url || check.result || check.output;
+        if (url) return url;
+        throw new Error('Task completed but no image URL');
+      }
+      if (check.status === 'failed') throw new Error('Image task failed on server');
+    } catch (e) {
+      const msg = (e as Error).message;
+      if (msg.includes('failed') || msg.includes('no image')) throw e;
+    }
   }
-  throw new Error('Flux: timed out');
+  throw new Error('Image generation timed out');
 }
 
 Deno.serve(async (req) => {
@@ -120,7 +191,7 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { prompt, style, editImageUrl, useFlux } = await req.json();
+    const { prompt, style, editImageUrl } = await req.json();
 
     if (!prompt) {
       return new Response(
@@ -129,69 +200,37 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Style enhancement
     const stylePrompts: Record<string, string> = {
-      realistic: 'ultra-realistic, photographic, high resolution, detailed, professional',
-      artistic: 'beautiful artistic illustration, painterly, vibrant colors, creative',
-      anime: 'anime style, detailed anime artwork, colorful, expressive',
-      abstract: 'abstract art, modern, vivid colors, creative composition',
-      fantasy: 'fantasy art, magical, detailed, cinematic lighting',
+      realistic: 'ultra-realistic, photorealistic, high resolution, 8K, professional photography',
+      artistic: 'beautiful artistic illustration, painterly, vibrant colors, award-winning art',
+      anime: 'high quality anime style, detailed, vibrant, expressive',
+      abstract: 'abstract digital art, modern, vivid colors, creative surreal composition',
+      fantasy: 'epic fantasy art, magical atmosphere, dramatic lighting, detailed',
     };
     const enhancedPrompt = `${prompt}. ${stylePrompts[style] || stylePrompts.realistic}`;
 
     let imageUrl: string | null = null;
 
-    // ── Image editing mode (Flux) ───────────────────────────────────────────
     if (editImageUrl) {
-      console.log('Flux edit mode, prompt:', prompt);
-      imageUrl = await fluxEditImage(editImageUrl, enhancedPrompt);
-    }
-    // ── Flux generation (useFlux flag or fallback) ──────────────────────────
-    else if (useFlux) {
-      console.log('Flux generate mode');
-      imageUrl = await fluxGenerateImage(enhancedPrompt);
-    }
-    // ── Standard endpoints with fallback ───────────────────────────────────
-    else {
-      const endpoints = getImageEndpoints(enhancedPrompt);
-      for (const ep of endpoints) {
-        try {
-          console.log('Trying image endpoint:', ep.url.split('?')[0]);
-          const res = await fetch(ep.url, { signal: AbortSignal.timeout(20000) });
-          if (!res.ok) continue;
-
-          if (ep.binary) {
-            const contentType = res.headers.get('content-type') || 'image/jpeg';
-            if (contentType.startsWith('image/')) {
-              const blob = await res.blob();
-              const arr = new Uint8Array(await blob.arrayBuffer());
-              const b64 = btoa(String.fromCharCode(...arr));
-              imageUrl = `data:${contentType};base64,${b64}`;
-              break;
-            }
-          } else {
-            const data = await res.json();
-            const extracted = extractImageUrl(data);
-            if (extracted) { imageUrl = extracted; break; }
-          }
-        } catch (e) {
-          console.log('Image endpoint failed:', ep.url.split('?')[0], (e as Error).message);
-        }
-      }
+      console.log('Mode: edit image');
+      imageUrl = await editImage(editImageUrl, enhancedPrompt);
+    } else {
+      console.log('Mode: generate image');
+      imageUrl = await generateImage(enhancedPrompt);
     }
 
-    if (!imageUrl) throw new Error('All image generation endpoints failed');
+    if (!imageUrl) throw new Error('Image generation returned no result');
 
-    // ── Save to storage if authenticated ────────────────────────────────────
+    // Save to storage if authenticated
     const authHeader = req.headers.get('Authorization');
     const token = authHeader?.replace('Bearer ', '');
     let user = null;
     if (token) {
-      const supabaseClient = createClient(
+      const supabaseAnon = createClient(
         Deno.env.get('SUPABASE_URL') ?? '',
         Deno.env.get('SUPABASE_ANON_KEY') ?? ''
       );
-      const { data } = await supabaseClient.auth.getUser(token);
+      const { data } = await supabaseAnon.auth.getUser(token);
       user = data?.user || null;
     }
 
@@ -203,33 +242,25 @@ Deno.serve(async (req) => {
         );
         const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, '');
         const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
-        const blob = new Blob([binaryData], { type: 'image/png' });
         const fileName = `${user.id}/${crypto.randomUUID()}.png`;
-
         const { error: uploadError } = await supabaseAdmin.storage
           .from('generated-images')
-          .upload(fileName, blob, { contentType: 'image/png', cacheControl: '3600', upsert: false });
-
-        if (!uploadError) {
-          const { data: { publicUrl } } = supabaseAdmin.storage
-            .from('generated-images')
-            .getPublicUrl(fileName);
-
-          await supabaseAdmin.from('generated_images').insert({
-            user_id: user.id,
-            prompt,
-            style: style || 'realistic',
-            image_url: publicUrl,
-            file_path: fileName,
+          .upload(fileName, new Blob([binaryData], { type: 'image/png' }), {
+            contentType: 'image/png', cacheControl: '3600', upsert: false
           });
-
+        if (!uploadError) {
+          const { data: { publicUrl } } = supabaseAdmin.storage.from('generated-images').getPublicUrl(fileName);
+          await supabaseAdmin.from('generated_images').insert({
+            user_id: user.id, prompt, style: style || 'realistic',
+            image_url: publicUrl, file_path: fileName,
+          }).catch(() => {});
           return new Response(
             JSON.stringify({ image_url: publicUrl }),
             { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
           );
         }
-      } catch (storageErr) {
-        console.error('Storage error (non-fatal):', storageErr);
+      } catch (e) {
+        console.error('Storage error (non-fatal):', e);
       }
     }
 

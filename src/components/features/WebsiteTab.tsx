@@ -1,12 +1,13 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   Sparkles, Globe, FileCode, Loader2, AlertCircle, Eye, Code2,
-  Zap, Cpu, Crown, X, Copy, Check, Plus, Trash2, Download,
+  Crown, X, Copy, Check, Plus, Trash2, Download,
   Share2, ChevronRight, Coins, CheckCircle,
   Menu, ArrowLeft, Wand2,
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import { useTheme } from '@/App';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface GeneratedFile { path: string; content: string }
@@ -22,95 +23,14 @@ interface Project {
 
 // ─── Tech Presets ─────────────────────────────────────────────────────────────
 const TECH_PRESETS = [
-  {
-    id: 'react-ts',
-    label: 'TypeScript · React · Vite',
-    short: 'React TS',
-    emoji: '⚡',
-    desc: 'Type-safe, modern, scalable',
-    color: 'from-cyan-400 to-blue-500',
-    ring: 'ring-cyan-400/40',
-    stack: ['react', 'typescript', 'vite'],
-  },
-  {
-    id: 'react-js',
-    label: 'JavaScript · React · Vite',
-    short: 'React JS',
-    emoji: '⚛️',
-    desc: 'Fast, flexible, familiar',
-    color: 'from-yellow-400 to-orange-500',
-    ring: 'ring-yellow-400/40',
-    stack: ['react', 'javascript', 'vite'],
-  },
-  {
-    id: 'vanilla',
-    label: 'HTML · CSS · JavaScript',
-    short: 'HTML / CSS / JS',
-    emoji: '🌐',
-    desc: 'Pure, lightweight, universal',
-    color: 'from-orange-400 to-pink-500',
-    ring: 'ring-orange-400/40',
-    stack: ['html', 'css', 'javascript'],
-  },
+  { id: 'react-ts', label: 'TypeScript · React', short: 'React TS', emoji: '⚡', desc: 'Modern, type-safe', color: 'from-cyan-400 to-blue-500', stack: ['react', 'typescript'] },
+  { id: 'react-js', label: 'JavaScript · React', short: 'React JS', emoji: '⚛️', desc: 'Fast and flexible', color: 'from-yellow-400 to-orange-500', stack: ['react', 'javascript'] },
+  { id: 'vanilla', label: 'HTML · CSS · JS', short: 'HTML/JS', emoji: '🌐', desc: 'Pure, universal', color: 'from-orange-400 to-pink-500', stack: ['html', 'css', 'javascript'] },
 ] as const;
-
 type TechPresetId = typeof TECH_PRESETS[number]['id'];
 
-// ─── Models ───────────────────────────────────────────────────────────────────
-const MODELS = [
-  {
-    id: 'dani-5.0',
-    name: 'DANI 5.0',
-    tagline: 'Our smartest model',
-    desc: 'Top-tier intelligence, beautiful code, fast results',
-    cost: 10,
-    badge: 'Best',
-    icon: Crown,
-    color: 'from-pink-500 to-purple-600',
-    ring: 'ring-pink-400/50',
-    textColor: 'text-pink-500',
-    badgeColor: 'bg-pink-500/15 text-pink-500 border-pink-500/30',
-    dot: 'bg-pink-400',
-  },
-  {
-    id: 'primis-1.20',
-    name: 'Primis 1.20',
-    tagline: 'Advanced reasoning',
-    desc: 'Deep analysis, complex apps, detailed output',
-    cost: 30,
-    badge: 'Pro',
-    icon: Cpu,
-    color: 'from-blue-500 to-indigo-600',
-    ring: 'ring-blue-400/50',
-    textColor: 'text-blue-500',
-    badgeColor: 'bg-blue-500/15 text-blue-500 border-blue-500/30',
-    dot: 'bg-blue-400',
-  },
-  {
-    id: 'lumi-5.3',
-    name: 'Lumi 5.3',
-    tagline: 'Ultrawide intelligence',
-    desc: 'Most powerful, complex systems, production-ready',
-    cost: 75,
-    badge: 'Premium',
-    icon: Zap,
-    color: 'from-yellow-400 to-orange-500',
-    ring: 'ring-yellow-400/50',
-    textColor: 'text-yellow-500',
-    badgeColor: 'bg-yellow-500/15 text-yellow-600 border-yellow-500/30',
-    dot: 'bg-yellow-400',
-  },
-] as const;
-
-type ModelId = typeof MODELS[number]['id'];
-
-// ─── Plans ────────────────────────────────────────────────────────────────────
-const PLANS = [
-  { name: 'Free', price: '$0', sub: '/mo', coins: '500 coins/day', features: ['DANI 5.0', 'ZIP download', '10 coins/gen'], grad: 'from-gray-400 to-gray-500', cta: 'Current plan', off: true },
-  { name: 'Starter', price: '$4.99', sub: '/mo', coins: '2k coins/mo', features: ['All 3 models', 'Priority gen', 'Chat history'], grad: 'from-pink-500 to-purple-600', cta: 'Coming soon', off: true },
-  { name: 'Pro', price: '$14.99', sub: '/mo', coins: '10k coins/mo', features: ['All models', 'Fastest gen', 'Priority support'], grad: 'from-blue-500 to-indigo-600', cta: 'Coming soon', off: true, popular: true },
-  { name: 'Unlimited', price: '$29.99', sub: '/mo', coins: '∞ coins', features: ['Unlimited gen', 'All models', 'API access'], grad: 'from-yellow-400 to-orange-500', cta: 'Coming soon', off: true },
-];
+// ─── Single Model ─────────────────────────────────────────────────────────────
+const MODEL = { id: 'dani-aq', name: 'DANI AQ', tagline: 'Powered by Gemini', cost: 10 };
 
 // ─── Date grouping ────────────────────────────────────────────────────────────
 function groupProjectsByDate(projects: Project[]) {
@@ -118,49 +38,34 @@ function groupProjectsByDate(projects: Project[]) {
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
   const sevenDaysAgo = new Date(today); sevenDaysAgo.setDate(today.getDate() - 7);
-  const thirtyDaysAgo = new Date(today); thirtyDaysAgo.setDate(today.getDate() - 30);
-
   const groups: { label: string; items: Project[] }[] = [
-    { label: 'Today', items: [] },
-    { label: 'Yesterday', items: [] },
-    { label: 'Last 7 days', items: [] },
-    { label: 'Last 30 days', items: [] },
-    { label: 'Older', items: [] },
+    { label: 'Today', items: [] }, { label: 'Yesterday', items: [] },
+    { label: 'Last 7 days', items: [] }, { label: 'Older', items: [] },
   ];
-
   projects.forEach(p => {
     const d = new Date(p.createdAt);
     if (d >= today) groups[0].items.push(p);
     else if (d >= yesterday) groups[1].items.push(p);
     else if (d >= sevenDaysAgo) groups[2].items.push(p);
-    else if (d >= thirtyDaysAgo) groups[3].items.push(p);
-    else groups[4].items.push(p);
+    else groups[3].items.push(p);
   });
-
   return groups.filter(g => g.items.length > 0);
 }
 
-// ─── TypeScript Stripper (for CDN React preview) ──────────────────────────────
+// ─── React CDN Preview ────────────────────────────────────────────────────────
 function stripTypeScript(code: string): string {
   return code
     .replace(/^import\s+type\s+.*?;?\s*$/gm, '')
     .replace(/^interface\s+\w+[^{]*\{[^}]*\}/gm, '')
     .replace(/^type\s+\w+\s*=\s*[^;]+;/gm, '')
-    .replace(/:\s*(string|number|boolean|void|null|undefined|React\.FC|React\.ReactNode|React\.JSX\.Element|JSX\.Element|any|unknown|never)\b(\s*\[\])?/g, '')
+    .replace(/:\s*(string|number|boolean|void|null|undefined|React\.FC|React\.ReactNode|any|unknown|never)\b(\s*\[\])?/g, '')
     .replace(/\s+as\s+\w+(\[\])?/g, '')
     .replace(/:\s*React\.\w+(?:<[^>]*>)?/g, '')
     .replace(/!(?=[.\[(])/g, '')
-    .replace(/\)\s*:\s*JSX\.Element\s*\{/g, ') {')
-    .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
-// ─── React CDN Preview Builder ────────────────────────────────────────────────
-function buildReactPreviewHTML(
-  files: GeneratedFile[],
-  editedContents: Record<string, string>,
-  preset: TechPresetId
-): string {
+function buildReactPreviewHTML(files: GeneratedFile[], editedContents: Record<string, string>, preset: TechPresetId): string {
   if (preset === 'vanilla') {
     const html = files.find(f => f.path === 'index.html');
     const css = files.find(f => f.path.endsWith('.css'));
@@ -171,68 +76,89 @@ function buildReactPreviewHTML(
     if (js) h = h.replace('</body>', `<script>${editedContents[js.path] ?? js.content}</script></body>`);
     return h;
   }
-
-  // React (JS or TS) — use CDN + Babel standalone for in-browser transpilation
-  const appFile = files.find(f =>
-    f.path.endsWith('App.tsx') || f.path.endsWith('App.jsx') ||
-    f.path === 'src/App.tsx' || f.path === 'src/App.jsx'
-  );
+  const appFile = files.find(f => f.path.endsWith('App.tsx') || f.path.endsWith('App.jsx') || f.path.endsWith('App.js'));
   const cssFile = files.find(f => f.path.endsWith('index.css') || f.path.endsWith('.css'));
   const appContent = editedContents[appFile?.path ?? ''] ?? appFile?.content ?? '';
   const cssContent = editedContents[cssFile?.path ?? ''] ?? cssFile?.content ?? '';
 
-  // Strip imports and export default, then strip TS if needed
+  // Check if the index.html already has CDN scripts (Gemini might generate a complete HTML)
+  const indexHtml = files.find(f => f.path === 'index.html');
+  if (indexHtml) {
+    const htmlContent = editedContents['index.html'] ?? indexHtml.content;
+    if (htmlContent.includes('react.development.js') || htmlContent.includes('unpkg.com/react')) {
+      // Already has CDN — inject CSS and return as-is
+      let h = htmlContent;
+      if (cssFile && !htmlContent.includes(cssContent.slice(0, 30))) {
+        h = h.replace('</head>', `<style>${cssContent}</style></head>`);
+      }
+      return h;
+    }
+  }
+
   let jsxCode = appContent
     .replace(/^import\s+.*?from\s+['"]react['"]\s*;?\s*$/gm, '')
     .replace(/^import\s+.*?from\s+['"][^'"]+['"]\s*;?\s*$/gm, '')
     .replace(/^export\s+default\s+/gm, '');
+  if (preset === 'react-ts') jsxCode = stripTypeScript(jsxCode);
 
-  if (preset === 'react-ts') {
-    jsxCode = stripTypeScript(jsxCode);
-  }
-
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Preview</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { margin: 0; }
-    ${cssContent}
-  </style>
-</head>
-<body>
-  <div id="root"></div>
-  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
-  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script type="text/babel" data-presets="react">
-    const { useState, useEffect, useCallback, useRef, useMemo, useContext, createContext, useReducer } = React;
-    ${jsxCode}
-    try {
-      ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
-    } catch(e) {
-      document.getElementById('root').innerHTML = '<div style="padding:20px;color:red;font-family:monospace">Preview error: ' + e.message + '</div>';
-    }
-  </script>
-</body>
-</html>`;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Preview</title><style>*{box-sizing:border-box}body{margin:0}${cssContent}</style></head><body><div id="root"></div><script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script type="text/babel" data-presets="react">const{useState,useEffect,useCallback,useRef,useMemo,useContext,createContext,useReducer}=React;${jsxCode}
+try{ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));}catch(e){document.getElementById('root').innerHTML='<div style="padding:20px;color:red;font-family:monospace">Preview error: '+e.message+'</div>';}</script></body></html>`;
 }
 
-// ─── Streaming animation hook ─────────────────────────────────────────────────
+// ─── Copy Button ──────────────────────────────────────────────────────────────
+function CopyBtn({ text, className = '' }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+      className={`p-1.5 rounded-lg hover:opacity-80 transition-all border ${className}`}
+      style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-muted)' }}>
+      {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+    </button>
+  );
+}
+
+// ─── Share Modal ──────────────────────────────────────────────────────────────
+function ShareModal({ url, onClose }: { url: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md" onClick={onClose}>
+      <div className="rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in border"
+        style={{ background: 'var(--bg-2)', borderColor: 'var(--border-normal)' }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="font-bold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
+            <Share2 className="w-4 h-4 text-pink-500" /> Share Your Build
+          </h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg border"
+            style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-muted)' }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+        <div className="rounded-xl px-3 py-2.5 flex items-center gap-2 mb-3 border"
+          style={{ background: 'var(--glass-bg)', borderColor: 'rgba(236,72,153,0.3)' }}>
+          <Globe className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
+          <span className="text-xs font-mono flex-1 truncate" style={{ color: 'var(--text-secondary)' }}>{url}</span>
+          <button onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+            className="flex-shrink-0 px-2.5 py-1 text-white rounded-lg text-xs font-bold flex items-center gap-1"
+            style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
+            {copied ? <><Check className="w-3 h-3" />Copied!</> : <><Copy className="w-3 h-3" />Copy</>}
+          </button>
+        </div>
+        <p className="text-[11px] text-center" style={{ color: 'var(--text-muted)' }}>Anyone with this link can view your website 🌸</p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Streaming animation ──────────────────────────────────────────────────────
 function useCodeStream(targetContent: string, isActive: boolean) {
   const [displayed, setDisplayed] = useState('');
   const [done, setDone] = useState(false);
   const rafRef = useRef<number>(0);
-
   useEffect(() => {
     if (!isActive || !targetContent) { setDisplayed(''); setDone(false); return; }
-    setDisplayed('');
-    setDone(false);
+    setDisplayed(''); setDone(false);
     let idx = 0;
-    const CHUNK = 22;
+    const CHUNK = 28;
     const animate = () => {
       idx = Math.min(idx + CHUNK, targetContent.length);
       setDisplayed(targetContent.slice(0, idx));
@@ -242,115 +168,16 @@ function useCodeStream(targetContent: string, isActive: boolean) {
     rafRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(rafRef.current);
   }, [targetContent, isActive]);
-
   return { displayed, done };
-}
-
-// ─── Copy Button ──────────────────────────────────────────────────────────────
-function CopyBtn({ text, className = '' }: { text: string; className?: string }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <button
-      onClick={() => { navigator.clipboard.writeText(text); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-      className={`p-1.5 rounded-lg glass hover:bg-white/60 text-gray-500 hover:text-gray-800 transition-all border border-white/30 ${className}`}
-    >
-      {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-    </button>
-  );
-}
-
-// ─── Plans Modal ──────────────────────────────────────────────────────────────
-function PlansModal({ coins, onClose }: { coins: number; onClose: () => void }) {
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md" onClick={onClose}>
-      <div className="glass border border-white/30 rounded-3xl w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
-        <div className="p-8">
-          <div className="flex items-center justify-between mb-6">
-            <div>
-              <h2 className="text-2xl font-black bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent">Power Up 💎</h2>
-              <p className="text-gray-500 text-sm mt-0.5">500 free coins every single day</p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-2 bg-yellow-50 border border-yellow-200 rounded-xl px-4 py-2">
-                <span className="text-yellow-600 font-black text-lg">{coins.toLocaleString()}</span>
-                <span className="text-yellow-500 text-sm">🪙</span>
-              </div>
-              <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-xl transition-all glass border border-white/30">
-                <X className="w-5 h-5 text-gray-500" />
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {PLANS.map(p => (
-              <div key={p.name} className={`relative glass border border-white/30 rounded-2xl p-5 flex flex-col ${p.popular ? 'ring-2 ring-purple-400/50' : ''}`}>
-                {p.popular && (
-                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[10px] font-bold px-3 py-1 rounded-full whitespace-nowrap shadow-lg">
-                    ⭐ Most Popular
-                  </div>
-                )}
-                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${p.grad} flex items-center justify-center mb-3 shadow-md`}>
-                  <Coins className="w-4 h-4 text-white" />
-                </div>
-                <p className="font-black text-gray-800 text-lg">{p.name}</p>
-                <p className="text-2xl font-black text-gray-800 mt-1">{p.price}<span className="text-sm text-gray-400">{p.sub}</span></p>
-                <p className="text-xs font-semibold text-pink-500 mt-1 mb-3">{p.coins}</p>
-                <ul className="space-y-1.5 flex-1 mb-4">
-                  {p.features.map(f => (
-                    <li key={f} className="flex items-center gap-2 text-xs text-gray-500">
-                      <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />{f}
-                    </li>
-                  ))}
-                </ul>
-                <button disabled={p.off} className={`w-full py-2 rounded-xl text-xs font-bold transition-all ${p.off ? 'glass text-gray-400 cursor-not-allowed border border-white/30' : `bg-gradient-to-r ${p.grad} text-white shadow-md`}`}>
-                  {p.cta}
-                </button>
-              </div>
-            ))}
-          </div>
-          <p className="text-center text-xs text-gray-400 mt-5">Payment plans launching soon · Your coins never expire 🌸</p>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Share Modal ──────────────────────────────────────────────────────────────
-function ShareModal({ url, onClose }: { url: string; onClose: () => void }) {
-  const [copied, setCopied] = useState(false);
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 backdrop-blur-md" onClick={onClose}>
-      <div className="glass border border-white/30 rounded-2xl w-full max-w-sm p-6 shadow-2xl animate-fade-in" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <Share2 className="w-4 h-4 text-pink-500" /> Share Your Build
-          </h3>
-          <button onClick={onClose} className="p-1.5 hover:bg-white/60 rounded-lg glass border border-white/30">
-            <X className="w-4 h-4 text-gray-500" />
-          </button>
-        </div>
-        <div className="glass border border-pink-200/50 rounded-xl px-3 py-2.5 flex items-center gap-2 mb-3">
-          <Globe className="w-3.5 h-3.5 text-pink-400 flex-shrink-0" />
-          <span className="text-xs font-mono text-gray-600 flex-1 truncate">{url}</span>
-          <button
-            onClick={() => { navigator.clipboard.writeText(url); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
-            className="flex-shrink-0 px-2.5 py-1 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 shadow-md"
-          >
-            {copied ? <><Check className="w-3 h-3" />Copied!</> : <><Copy className="w-3 h-3" />Copy</>}
-          </button>
-        </div>
-        <p className="text-[11px] text-gray-400 text-center">Anyone with this link can view your website 🌸</p>
-      </div>
-    </div>
-  );
 }
 
 // ─── MAIN COMPONENT ───────────────────────────────────────────────────────────
 export default function WebsiteTab() {
-  // Wizard step: 0=prompt, 1=tech, 2=model, 3=results/generating
+  const { theme } = useTheme();
+  const isDark = theme === 'dark';
   const [step, setStep] = useState(0);
   const [prompt, setPrompt] = useState('');
   const [techPreset, setTechPreset] = useState<TechPresetId>('react-ts');
-  const [model, setModel] = useState<ModelId>('dani-5.0');
   const [isGenerating, setIsGenerating] = useState(false);
   const [genStreamContent, setGenStreamContent] = useState('');
   const [generatedFiles, setGeneratedFiles] = useState<GeneratedFile[]>([]);
@@ -363,28 +190,22 @@ export default function WebsiteTab() {
   const [coins, setCoins] = useState<number | null>(null);
   const [error, setError] = useState('');
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [showPlans, setShowPlans] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
   const [showShare, setShowShare] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [dailyBonus, setDailyBonus] = useState(0);
-
   const promptRef = useRef<HTMLTextAreaElement>(null);
   const genStreamRef = useRef<HTMLPreElement>(null);
-
-  const selectedModel = MODELS.find(m => m.id === model)!;
   const selectedPreset = TECH_PRESETS.find(t => t.id === techPreset)!;
   const hasFiles = generatedFiles.length > 0;
   const currentFile = generatedFiles[selectedFileIdx];
   const currentContent = currentFile ? (editedContents[currentFile.path] ?? currentFile.content) : '';
-
   const { displayed: streamDisplayed, done: streamDone } = useCodeStream(genStreamContent, isGenerating && genStreamContent.length > 0);
 
   useEffect(() => {
     if (genStreamRef.current) genStreamRef.current.scrollTop = genStreamRef.current.scrollHeight;
   }, [streamDisplayed]);
 
-  // Load data
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data: { session } }) => {
       if (session?.user) {
@@ -394,14 +215,16 @@ export default function WebsiteTab() {
     });
     try {
       const saved = localStorage.getItem('dani-vibe-projects');
-      if (saved) setProjects(JSON.parse(saved));
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) setProjects(parsed);
+      }
     } catch { /* ignore */ }
   }, []);
 
-  // Project management
-  const saveProject = useCallback((name: string, desc: string, mod: string, preset: string, files: GeneratedFile[]): string => {
+  const saveProject = useCallback((name: string, desc: string, preset: string, files: GeneratedFile[]): string => {
     const id = Date.now().toString();
-    const project: Project = { id, name, description: desc, model: mod, techPreset: preset, files, createdAt: new Date().toISOString() };
+    const project: Project = { id, name, description: desc, model: MODEL.id, techPreset: preset, files, createdAt: new Date().toISOString() };
     setProjects(prev => {
       const updated = [project, ...prev].slice(0, 50);
       localStorage.setItem('dani-vibe-projects', JSON.stringify(updated));
@@ -414,7 +237,6 @@ export default function WebsiteTab() {
     setGeneratedFiles(p.files);
     setProjectName(p.name);
     setPrompt(p.description);
-    setModel(p.model as ModelId);
     setTechPreset((p.techPreset as TechPresetId) || 'react-ts');
     setEditedContents({});
     setSelectedFileIdx(0);
@@ -444,34 +266,23 @@ export default function WebsiteTab() {
     setTimeout(() => promptRef.current?.focus(), 100);
   };
 
-  // Generate
   const handleGenerate = async () => {
     const p = prompt.trim();
     if (!p) return;
-    if (coins !== null && coins < selectedModel.cost) {
-      setError(`Need ${selectedModel.cost} coins — you have ${coins}.`);
-      setShowPlans(true);
-      return;
-    }
-
-    setStep(3);
-    setIsGenerating(true);
-    setError('');
-    setGeneratedFiles([]);
-    setEditedContents({});
-    setShareUrl('');
+    if (coins !== null && coins < MODEL.cost) { setError(`Need ${MODEL.cost} coins — you have ${coins}.`); return; }
+    setStep(3); setIsGenerating(true); setError('');
+    setGeneratedFiles([]); setEditedContents({}); setShareUrl('');
 
     const phases = [
-      `▸ Initializing ${selectedModel.name}...\n`,
-      `▸ Reading prompt...\n  "${p.slice(0, 60)}${p.length > 60 ? '...' : ''}"\n`,
+      `▸ Starting DANI AQ...\n`,
+      `▸ Reading: "${p.slice(0, 55)}${p.length > 55 ? '...' : ''}"\n`,
       `▸ Stack: ${selectedPreset.label}\n`,
       `▸ Planning architecture...\n`,
-      `▸ Writing ${selectedPreset.stack.includes('react') ? 'React components' : 'HTML structure'}...\n`,
+      `▸ Writing ${selectedPreset.stack.includes('react') ? 'React components' : 'HTML/CSS/JS'}...\n`,
       `▸ Adding styles & animations...\n`,
-      `▸ Wiring up interactivity...\n`,
-      `▸ Final polish & optimization...\n`,
+      `▸ Building interactivity...\n`,
+      `▸ Final polish...\n`,
     ];
-
     let builtPhases = phases[0];
     setGenStreamContent(builtPhases);
     let phaseIdx = 0;
@@ -479,16 +290,14 @@ export default function WebsiteTab() {
       phaseIdx = Math.min(phaseIdx + 1, phases.length - 1);
       builtPhases += phases[phaseIdx];
       setGenStreamContent(builtPhases);
-    }, 1800);
+    }, 2000);
 
     try {
       const techStack = selectedPreset.stack as unknown as string[];
       const { data, error: fnErr } = await supabase.functions.invoke('create-website', {
-        body: { description: p, techStack, model }
+        body: { description: p, techStack, model: MODEL.id }
       });
-
       clearInterval(interval);
-
       if (fnErr) {
         let msg = fnErr.message;
         if (fnErr instanceof FunctionsHttpError) {
@@ -497,33 +306,26 @@ export default function WebsiteTab() {
         try { const parsed = JSON.parse(msg); msg = parsed.error || msg; } catch { /* ignore */ }
         throw new Error(msg);
       }
-
       const files: GeneratedFile[] = data.files || [];
       const name: string = data.projectName || 'my-project';
-
-      if (files.length > 0) {
-        setGenStreamContent(`▸ Done! Your website is ready ✓\n\n// ${files[0].path}\n\n${files[0].content}`);
-      }
-
+      if (files.length > 0) setGenStreamContent(`▸ Done! ✓\n\n// ${files[0].path}\n\n${files[0].content.slice(0, 400)}`);
       setGeneratedFiles(files);
       setProjectName(name);
       if (data.newBalance != null) setCoins(data.newBalance);
       if (data.dailyRefreshGranted > 0) setDailyBonus(data.dailyRefreshGranted);
-
-      const newId = saveProject(name, p, model, techPreset, files);
+      const newId = saveProject(name, p, techPreset, files);
       setActiveProjectId(newId);
       setSelectedFileIdx(0);
       setViewMode('preview');
     } catch (err: unknown) {
       clearInterval(interval);
       setError(err instanceof Error ? err.message : 'Generation failed');
-      setStep(2);
+      setStep(1);
     } finally {
       setIsGenerating(false);
     }
   };
 
-  // Share
   const handleShare = async () => {
     if (!hasFiles) return;
     setIsSharing(true);
@@ -531,10 +333,7 @@ export default function WebsiteTab() {
       const { data: { session } } = await supabase.auth.getSession();
       const htmlContent = buildReactPreviewHTML(generatedFiles, editedContents, techPreset);
       const { data, error } = await supabase.from('shared_websites').insert({
-        user_id: session?.user?.id ?? null,
-        project_name: projectName,
-        html_content: htmlContent,
-        model,
+        user_id: session?.user?.id ?? null, project_name: projectName, html_content: htmlContent, model: MODEL.id,
       }).select('id').single();
       if (error) throw error;
       setShareUrl(`${window.location.origin}/share?id=${data.id}`);
@@ -543,18 +342,16 @@ export default function WebsiteTab() {
     finally { setIsSharing(false); }
   };
 
-  // Download ZIP
   const handleDownload = () => {
     const enc = new TextEncoder();
-    const chunks: Uint8Array[] = [];
-    const cd: Uint8Array[] = [];
-    let offset = 0;
+    const chunks: Uint8Array[] = []; const cd: Uint8Array[] = []; let offset = 0;
     generatedFiles.forEach(f => {
       const content = enc.encode(editedContents[f.path] ?? f.content);
       const name = enc.encode(f.path);
       const hdr = new Uint8Array(30 + name.length);
       const hv = new DataView(hdr.buffer);
       hv.setUint32(0, 0x04034b50, true); hv.setUint16(4, 10, true);
+      hv.setUint32(18, content.length, true); hv.setUint32(22, content.length, true);
       hv.setUint16(26, name.length, true); hdr.set(name, 30);
       chunks.push(hdr, content);
       const cde = new Uint8Array(46 + name.length);
@@ -569,115 +366,106 @@ export default function WebsiteTab() {
     const eocd = new Uint8Array(22);
     const ev = new DataView(eocd.buffer);
     ev.setUint32(0, 0x06054b50, true); ev.setUint16(8, generatedFiles.length, true);
-    ev.setUint16(10, generatedFiles.length, true); ev.setUint32(12, cdSize, true);
-    ev.setUint32(16, offset, true);
+    ev.setUint16(10, generatedFiles.length, true); ev.setUint32(12, cdSize, true); ev.setUint32(16, offset, true);
     const blob = new Blob([...chunks, ...cd, eocd], { type: 'application/zip' });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url; a.download = `${projectName || 'project'}.zip`; a.click();
+    const a = document.createElement('a'); a.href = url; a.download = `${projectName || 'project'}.zip`; a.click();
     URL.revokeObjectURL(url);
   };
 
-  // Preview HTML — handles both vanilla and React (CDN mode)
   const previewHTML = useMemo(() => {
     if (!hasFiles) return '';
     return buildReactPreviewHTML(generatedFiles, editedContents, techPreset);
   }, [generatedFiles, editedContents, hasFiles, techPreset]);
 
-  const handlePromptKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); if (prompt.trim()) setStep(1); }
-  };
-
   const groupedProjects = groupProjectsByDate(projects);
+  const bgColor = isDark ? '#09090f' : '#f8f8ff';
+  const sidebarBg = isDark ? '#0c0c18' : '#ffffff';
+  const terminalBg = isDark ? '#0a0a0a' : '#1a1a2e';
 
-  // ═══════════════════════════════════════════════════════════════════════════
   return (
-    <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: 'linear-gradient(135deg, #fdf2f8 0%, #faf5ff 50%, #eff6ff 100%)' }}>
-      {showPlans && <PlansModal coins={coins ?? 0} onClose={() => setShowPlans(false)} />}
+    <div className="flex-1 flex flex-col overflow-hidden relative" style={{ background: bgColor }}>
       {showShare && shareUrl && <ShareModal url={shareUrl} onClose={() => setShowShare(false)} />}
 
-      {/* Daily bonus toast */}
       {dailyBonus > 0 && (
         <div className="fixed top-20 right-4 z-50 bg-gradient-to-r from-green-500 to-emerald-600 text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center gap-3 animate-fade-in">
           <span className="text-xl">🎉</span>
-          <div><p className="font-bold text-sm">Daily refresh!</p><p className="text-xs text-green-100">+{dailyBonus} coins added</p></div>
-          <button onClick={() => setDailyBonus(0)} className="ml-1 text-green-200 hover:text-white"><X className="w-4 h-4" /></button>
+          <div><p className="font-bold text-sm">Daily refresh!</p><p className="text-xs text-green-100">+{dailyBonus} coins</p></div>
+          <button onClick={() => setDailyBonus(0)}><X className="w-4 h-4 text-green-200" /></button>
         </div>
       )}
 
-      {/* ── History Sidebar Overlay ── */}
+      {/* Sidebar */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-40 flex" onClick={() => setSidebarOpen(false)}>
           <div className="absolute inset-0 bg-black/30 backdrop-blur-sm" />
-          <aside
-            className="relative z-50 w-72 flex flex-col glass border-r border-white/40 shadow-2xl animate-fade-in h-full"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Sidebar header */}
-            <div className="px-5 pt-6 pb-4 border-b border-white/30 flex items-center justify-between">
+          <aside className="relative z-50 w-72 flex flex-col border-r shadow-2xl animate-fade-in h-full"
+            style={{ background: sidebarBg, borderColor: 'var(--border-normal)' }}
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 pt-6 pb-4 border-b flex items-center justify-between"
+              style={{ borderColor: 'var(--border-subtle)' }}>
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center shadow-md">
+                <div className="w-8 h-8 rounded-xl flex items-center justify-center shadow-md"
+                  style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
                   <Sparkles className="w-4 h-4 text-white" />
                 </div>
                 <div>
-                  <p className="font-black text-gray-800 text-sm">Vibe Code</p>
-                  <p className="text-[10px] text-gray-400">Your projects</p>
+                  <p className="font-black text-sm" style={{ color: 'var(--text-primary)' }}>Vibe Code</p>
+                  <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Your projects</p>
                 </div>
               </div>
-              <button onClick={() => setSidebarOpen(false)} className="p-1.5 hover:bg-white/60 rounded-lg glass border border-white/30 transition-all">
-                <X className="w-4 h-4 text-gray-500" />
+              <button onClick={() => setSidebarOpen(false)} className="p-1.5 rounded-lg border transition-all"
+                style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-muted)' }}>
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            {/* Coins + New */}
-            <div className="px-4 py-3 space-y-2 border-b border-white/20">
-              <button onClick={() => { setShowPlans(true); setSidebarOpen(false); }}
-                className="w-full flex items-center gap-2.5 px-4 py-3 glass rounded-2xl border border-yellow-200/60 hover:border-yellow-400/50 transition-all">
-                <span className="text-lg">💰</span>
+            <div className="px-4 py-3 space-y-2 border-b" style={{ borderColor: 'var(--border-subtle)' }}>
+              <div className="w-full flex items-center gap-2.5 px-4 py-3 rounded-2xl border"
+                style={{ background: 'var(--glass-bg)', borderColor: 'rgba(234,179,8,0.25)' }}>
+                <span className="text-lg">🪙</span>
                 <div className="flex-1 text-left">
-                  <p className="text-[10px] text-gray-400">Coin Balance</p>
-                  <p className="font-black text-gray-800 text-sm">
-                    {coins === null ? '—' : coins.toLocaleString()}
-                    <span className="text-yellow-500 text-xs ml-1">coins</span>
+                  <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>Balance</p>
+                  <p className="font-black text-sm" style={{ color: 'var(--text-primary)' }}>
+                    {coins === null ? '—' : coins.toLocaleString()} <span className="text-yellow-500 text-xs">coins</span>
                   </p>
                 </div>
-                <ChevronRight className="w-4 h-4 text-gray-400" />
-              </button>
+              </div>
               <button onClick={startNew}
-                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl bg-gradient-to-r from-pink-500 to-purple-600 text-white text-sm font-bold shadow-md hover:from-pink-600 hover:to-purple-700 transition-all">
+                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-2xl text-white text-sm font-bold shadow-md"
+                style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
                 <Plus className="w-4 h-4" /> New Project
               </button>
             </div>
 
-            {/* Project list */}
             <div className="flex-1 overflow-y-auto py-3 px-3 space-y-4">
               {projects.length === 0 ? (
                 <div className="text-center py-12 px-4">
-                  <div className="w-12 h-12 rounded-2xl bg-pink-50 border border-pink-100 flex items-center justify-center mx-auto mb-3">
-                    <Globe className="w-6 h-6 text-pink-300" />
-                  </div>
-                  <p className="text-sm text-gray-400">Projects you build will appear here</p>
+                  <Globe className="w-8 h-8 mx-auto mb-3 opacity-20" style={{ color: 'var(--text-muted)' }} />
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No projects yet</p>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Build something to see it here</p>
                 </div>
               ) : (
                 groupedProjects.map(group => (
                   <div key={group.label}>
-                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider px-2 mb-2">{group.label}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-wider px-2 mb-2" style={{ color: 'var(--text-muted)' }}>{group.label}</p>
                     <div className="space-y-1">
                       {group.items.map(p => (
                         <div key={p.id} onClick={() => loadProject(p)}
-                          className={`group relative flex items-start gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all ${
-                            activeProjectId === p.id
-                              ? 'bg-gradient-to-r from-pink-500/15 to-purple-500/15 border border-pink-300/40 shadow-sm'
-                              : 'hover:glass hover:border hover:border-white/40'
-                          }`}>
+                          className="group relative flex items-start gap-2.5 px-3 py-2.5 rounded-xl cursor-pointer transition-all hover:opacity-80"
+                          style={{
+                            background: activeProjectId === p.id ? 'rgba(236,72,153,0.1)' : 'transparent',
+                            border: `1px solid ${activeProjectId === p.id ? 'rgba(236,72,153,0.3)' : 'transparent'}`,
+                          }}>
                           <div className="flex-1 min-w-0">
-                            <p className={`text-xs font-semibold truncate ${activeProjectId === p.id ? 'text-pink-700' : 'text-gray-700'}`}>
+                            <p className="text-xs font-semibold truncate" style={{ color: activeProjectId === p.id ? '#ec4899' : 'var(--text-secondary)' }}>
                               {p.name.replace(/-/g, ' ')}
                             </p>
-                            <p className="text-[10px] text-gray-400 truncate mt-0.5">{p.description.slice(0, 45)}…</p>
+                            <p className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>{p.description.slice(0, 45)}…</p>
                           </div>
                           <button onClick={e => deleteProject(p.id, e)}
-                            className="flex-shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:bg-red-50 hover:text-red-500 text-gray-400 transition-all">
+                            className="flex-shrink-0 p-1 rounded-lg opacity-0 group-hover:opacity-100 hover:text-red-400 transition-all"
+                            style={{ color: 'var(--text-muted)' }}>
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
@@ -691,36 +479,39 @@ export default function WebsiteTab() {
         </div>
       )}
 
-      {/* ── Top bar (always visible) ── */}
-      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 glass border-b border-white/40">
+      {/* Top bar */}
+      <div className="flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b"
+        style={{ background: isDark ? 'rgba(12,12,24,0.95)' : 'rgba(255,255,255,0.95)', borderColor: 'var(--border-subtle)', backdropFilter: 'blur(20px)' }}>
         <button onClick={() => setSidebarOpen(true)}
-          className="p-2.5 glass rounded-xl hover:bg-white/80 transition-all border border-white/40 flex-shrink-0"
-          title="Project history">
-          <Menu className="w-5 h-5 text-gray-600" />
+          className="p-2.5 rounded-xl hover:opacity-80 transition-all border flex-shrink-0"
+          style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-secondary)' }}>
+          <Menu className="w-5 h-5" />
         </button>
-
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded-lg bg-gradient-to-br from-pink-500 to-purple-600 flex items-center justify-center flex-shrink-0">
+          <div className="w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
             <Sparkles className="w-3.5 h-3.5 text-white" />
           </div>
-          <span className="font-black text-gray-800 text-sm tracking-tight">Vibe Code</span>
+          <span className="font-black text-sm tracking-tight" style={{ color: 'var(--text-primary)' }}>Vibe Code</span>
           {step === 3 && hasFiles && (
-            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-green-100 text-green-600 border border-green-200 font-semibold">{projectName.replace(/-/g, ' ')}</span>
+            <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full font-semibold"
+              style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.3)' }}>
+              {projectName.replace(/-/g, ' ')}
+            </span>
           )}
         </div>
-
         <div className="flex-1" />
 
-        {/* Tech preset quick switch in top bar (steps 0-2) */}
+        {/* Tech preset selector */}
         {step < 3 && (
-          <div className="hidden sm:flex items-center gap-1 bg-white/60 rounded-xl p-1 border border-white/40">
+          <div className="hidden sm:flex items-center gap-1 rounded-xl p-1 border"
+            style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
             {TECH_PRESETS.map(t => (
               <button key={t.id} onClick={() => setTechPreset(t.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                  techPreset === t.id
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}>
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5"
+                style={techPreset === t.id
+                  ? { background: 'linear-gradient(135deg,#ec4899,#a855f7)', color: 'white' }
+                  : { color: 'var(--text-muted)' }}>
                 <span>{t.emoji}</span>
                 <span className="hidden md:inline">{t.short}</span>
               </button>
@@ -728,99 +519,71 @@ export default function WebsiteTab() {
           </div>
         )}
 
-        {/* Step indicator */}
-        {step < 3 && (
-          <div className="hidden lg:flex items-center gap-1.5">
-            {['Prompt', 'Stack', 'Model'].map((label, i) => (
-              <div key={i} className="flex items-center gap-1.5">
-                <div className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold transition-all ${
-                  step === i ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md' :
-                  step > i ? 'bg-green-100 text-green-600 border border-green-200' :
-                  'glass text-gray-400 border border-white/40'
-                }`}>
-                  {step > i ? <Check className="w-3 h-3" /> : <span>{i + 1}</span>}
-                  {label}
-                </div>
-                {i < 2 && <ChevronRight className="w-3 h-3 text-gray-300" />}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Result actions */}
         {step === 3 && hasFiles && (
           <div className="flex items-center gap-2">
             <button onClick={handleShare} disabled={isSharing}
-              className="flex items-center gap-1.5 px-3 py-1.5 glass rounded-xl border border-white/40 hover:bg-white/80 text-gray-600 text-xs font-semibold transition-all disabled:opacity-50">
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-semibold transition-all disabled:opacity-50"
+              style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-secondary)' }}>
               <Share2 className="w-3.5 h-3.5 text-pink-500" />{isSharing ? '…' : 'Share'}
             </button>
             <button onClick={handleDownload}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-xs font-bold shadow-md hover:from-pink-600 hover:to-purple-700 transition-all">
+              className="flex items-center gap-1.5 px-3 py-1.5 text-white rounded-xl text-xs font-bold shadow-md"
+              style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
               <Download className="w-3.5 h-3.5" />ZIP
             </button>
           </div>
         )}
 
-        {/* Coins pill */}
-        <button onClick={() => setShowPlans(true)}
-          className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 glass rounded-xl border border-yellow-200/60 hover:border-yellow-400/50 transition-all">
+        <button onClick={() => {}} className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border transition-all"
+          style={{ background: 'var(--glass-bg)', borderColor: 'rgba(234,179,8,0.3)' }}>
           <span className="text-sm">🪙</span>
-          <span className="text-xs font-bold text-gray-700">{coins === null ? '—' : coins.toLocaleString()}</span>
+          <span className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{coins === null ? '—' : coins.toLocaleString()}</span>
         </button>
       </div>
 
-      {/* ═══════════════════ STEP CONTENT ═══════════════════ */}
+      {/* Step Content */}
       <div className="flex-1 overflow-hidden flex flex-col">
 
-        {/* ── STEP 0: Big Prompt Input ── */}
+        {/* STEP 0: Prompt */}
         {step === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 animate-fade-in">
             <div className="w-full max-w-2xl mx-auto">
-              {/* Hero */}
               <div className="text-center mb-10">
-                <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl bg-gradient-to-br from-pink-500 to-purple-600 mb-5 shadow-2xl shadow-pink-500/30">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-3xl mb-5 shadow-2xl"
+                  style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
                   <Wand2 className="w-10 h-10 text-white" />
                 </div>
-                <h1 className="text-3xl sm:text-4xl font-black bg-gradient-to-r from-pink-600 to-purple-600 bg-clip-text text-transparent mb-2">
-                  What are we building?
-                </h1>
-                <p className="text-gray-500 text-sm sm:text-base">Describe your website or app — DANI writes every line of code for you ✨</p>
+                <h1 className="text-3xl sm:text-4xl font-black mb-2 shimmer-text">What are we building?</h1>
+                <p className="text-sm sm:text-base" style={{ color: 'var(--text-muted)' }}>Describe your website or app — DANI writes every line ✨</p>
               </div>
 
-              {/* Big prompt box */}
-              <div className="glass border-2 border-white/50 rounded-3xl shadow-xl shadow-pink-200/30 overflow-hidden">
-                <textarea
-                  ref={promptRef}
-                  value={prompt}
-                  onChange={e => setPrompt(e.target.value)}
-                  onKeyDown={handlePromptKey}
-                  placeholder="e.g. A beautiful e-commerce store with a hero section, product grid, shopping cart, and smooth animations..."
-                  rows={5}
-                  autoFocus
-                  className="w-full bg-transparent text-gray-800 placeholder-gray-400 text-base sm:text-lg leading-relaxed p-6 resize-none focus:outline-none font-medium"
-                />
+              <div className="rounded-3xl shadow-xl overflow-hidden border-2"
+                style={{ background: 'var(--glass-light-bg)', borderColor: 'var(--border-normal)' }}>
+                <textarea ref={promptRef} value={prompt} onChange={e => setPrompt(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && prompt.trim()) setStep(1); }}
+                  placeholder="e.g. A beautiful e-commerce store with product grid, shopping cart, and smooth animations..."
+                  rows={5} autoFocus
+                  className="w-full bg-transparent text-base sm:text-lg leading-relaxed p-6 resize-none focus:outline-none font-medium"
+                  style={{ color: 'var(--text-primary)' }} />
                 <div className="flex items-center justify-between px-5 pb-5 pt-1 gap-3 flex-wrap">
-                  <p className="text-xs text-gray-400 hidden sm:block">⌘↵ to continue</p>
-                  {/* Quick starters */}
+                  <p className="text-xs hidden sm:block" style={{ color: 'var(--text-muted)' }}>⌘↵ to continue</p>
                   <div className="flex gap-2 flex-wrap">
                     {['Portfolio site', 'SaaS dashboard', 'Landing page'].map(s => (
                       <button key={s} onClick={() => setPrompt(s + ' — modern, responsive design with animations')}
-                        className="text-xs px-3 py-1.5 glass rounded-full border border-white/50 text-gray-600 hover:text-pink-600 hover:border-pink-300/50 transition-all font-medium">
+                        className="text-xs px-3 py-1.5 rounded-full border font-medium transition-all hover:border-pink-400/50"
+                        style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-secondary)' }}>
                         {s}
                       </button>
                     ))}
                   </div>
-                  <button
-                    onClick={() => { if (prompt.trim()) setStep(1); }}
-                    disabled={!prompt.trim()}
-                    className="flex items-center gap-2.5 px-7 py-3.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-black text-base shadow-xl shadow-pink-400/30 hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-                  >
+                  <button onClick={() => { if (prompt.trim()) setStep(1); }} disabled={!prompt.trim()}
+                    className="flex items-center gap-2.5 px-7 py-3.5 text-white rounded-2xl font-black text-base shadow-xl transition-all disabled:opacity-40"
+                    style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
                     Next <ChevronRight className="w-5 h-5" />
                   </button>
                 </div>
               </div>
 
-              {/* Quick ideas */}
               <div className="mt-8 grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {[
                   { icon: '🛒', label: 'E-commerce', desc: 'Product grid & cart' },
@@ -829,11 +592,12 @@ export default function WebsiteTab() {
                   { icon: '🎨', label: 'Creative', desc: 'Bold animations' },
                 ].map(s => (
                   <button key={s.label}
-                    onClick={() => { setPrompt(`${s.label} — ${s.desc}, modern responsive design with smooth animations and professional look`); setTimeout(() => setStep(1), 50); }}
-                    className="flex flex-col items-center gap-2 p-4 glass rounded-2xl border border-white/40 hover:border-pink-300/50 hover:shadow-md transition-all group text-center">
+                    onClick={() => { setPrompt(`${s.label} website — ${s.desc}, modern responsive design with smooth animations`); setTimeout(() => setStep(1), 50); }}
+                    className="flex flex-col items-center gap-2 p-4 rounded-2xl border transition-all group text-center"
+                    style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
                     <span className="text-2xl">{s.icon}</span>
-                    <p className="text-xs font-bold text-gray-700 group-hover:text-pink-600 transition-colors">{s.label}</p>
-                    <p className="text-[10px] text-gray-400">{s.desc}</p>
+                    <p className="text-xs font-bold" style={{ color: 'var(--text-primary)' }}>{s.label}</p>
+                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{s.desc}</p>
                   </button>
                 ))}
               </div>
@@ -841,237 +605,177 @@ export default function WebsiteTab() {
           </div>
         )}
 
-        {/* ── STEP 1: Tech Stack ── */}
+        {/* STEP 1: Tech + Generate (combined) */}
         {step === 1 && (
-          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 animate-fade-in">
+          <div className="flex-1 overflow-y-auto px-4 py-8 animate-fade-in">
             <div className="w-full max-w-xl mx-auto">
-              <button onClick={() => setStep(0)} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-pink-500 transition-colors mb-6 font-medium">
+              <button onClick={() => setStep(0)} className="flex items-center gap-1.5 text-sm mb-6 font-medium hover:text-pink-400 transition-colors"
+                style={{ color: 'var(--text-muted)' }}>
                 <ArrowLeft className="w-4 h-4" /> Edit prompt
               </button>
-              <div className="glass border border-white/40 rounded-2xl px-4 py-3 mb-8 flex items-start gap-3">
+
+              <div className="rounded-2xl px-4 py-3 mb-8 flex items-start gap-3 border"
+                style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
                 <span className="text-lg flex-shrink-0 mt-0.5">💬</span>
-                <p className="text-sm text-gray-600 leading-relaxed line-clamp-2">{prompt}</p>
+                <p className="text-sm leading-relaxed line-clamp-2" style={{ color: 'var(--text-secondary)' }}>{prompt}</p>
               </div>
 
               <div className="text-center mb-8">
-                <h2 className="text-2xl sm:text-3xl font-black text-gray-800 mb-2">Pick your tech stack</h2>
-                <p className="text-gray-500 text-sm">What framework should DANI use?</p>
+                <h2 className="text-2xl sm:text-3xl font-black mb-2" style={{ color: 'var(--text-primary)' }}>Pick your tech stack</h2>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>What framework should DANI use?</p>
               </div>
 
               <div className="space-y-3">
                 {TECH_PRESETS.map(preset => (
                   <button key={preset.id} onClick={() => setTechPreset(preset.id)}
-                    className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${
-                      techPreset === preset.id
-                        ? 'glass border-pink-400/60 shadow-lg shadow-pink-200/30'
-                        : 'glass border-white/40 hover:border-pink-200/60'
-                    }`}>
-                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${preset.color} flex items-center justify-center text-xl shadow-md flex-shrink-0`}>
-                      {preset.emoji}
-                    </div>
+                    className="w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all"
+                    style={{
+                      background: 'var(--glass-bg)',
+                      borderColor: techPreset === preset.id ? '#ec4899' : 'var(--border-normal)',
+                    }}>
+                    <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${preset.color} flex items-center justify-center text-xl shadow-md flex-shrink-0`}>{preset.emoji}</div>
                     <div className="flex-1 text-left">
-                      <p className="font-black text-gray-800">{preset.short}</p>
-                      <p className="text-xs text-gray-500">{preset.label}</p>
-                      <p className="text-xs text-gray-400 mt-0.5">{preset.desc}</p>
+                      <p className="font-black" style={{ color: 'var(--text-primary)' }}>{preset.short}</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{preset.label} · {preset.desc}</p>
                     </div>
-                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${
-                      techPreset === preset.id ? 'bg-gradient-to-br from-pink-500 to-purple-600 border-pink-400' : 'border-gray-300'
-                    }`}>
+                    <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-all ${techPreset === preset.id ? 'border-pink-400' : ''}`}
+                      style={techPreset === preset.id ? { background: 'linear-gradient(135deg,#ec4899,#a855f7)' } : { borderColor: 'var(--border-normal)' }}>
                       {techPreset === preset.id && <Check className="w-3 h-3 text-white" />}
                     </div>
                   </button>
                 ))}
               </div>
 
-              <button onClick={() => setStep(2)}
-                className="w-full mt-6 flex items-center justify-center gap-2.5 py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-black text-base shadow-xl shadow-pink-400/30 hover:from-pink-600 hover:to-purple-700 transition-all">
-                Next — Choose Model <ChevronRight className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── STEP 2: Model Selection ── */}
-        {step === 2 && (
-          <div className="flex-1 flex flex-col items-center justify-center px-4 py-8 animate-fade-in">
-            <div className="w-full max-w-xl mx-auto">
-              <button onClick={() => setStep(1)} className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-pink-500 transition-colors mb-6 font-medium">
-                <ArrowLeft className="w-4 h-4" /> Back to stack
-              </button>
-
-              <div className="text-center mb-8">
-                <h2 className="text-2xl sm:text-3xl font-black text-gray-800 mb-2">Choose your AI model</h2>
-                <p className="text-gray-500 text-sm">Different models, different powers 💫</p>
+              {/* Model info (single model) */}
+              <div className="mt-6 p-4 rounded-2xl border-2 border-pink-400/30 flex items-center gap-4"
+                style={{ background: 'rgba(236,72,153,0.06)' }}>
+                <div className="w-12 h-12 rounded-2xl flex items-center justify-center shadow-md flex-shrink-0"
+                  style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
+                  <Crown className="w-6 h-6 text-white" />
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="font-black" style={{ color: 'var(--text-primary)' }}>{MODEL.name}</p>
+                    <span className="text-[10px] px-2 py-0.5 rounded-full text-white font-bold"
+                      style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>⭐ Only Model</span>
+                  </div>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{MODEL.tagline} · {MODEL.cost} coins per generation</p>
+                </div>
+                <CheckCircle className="w-5 h-5 text-pink-500 flex-shrink-0" />
               </div>
 
-              {/* Error */}
               {error && (
-                <div className="flex items-center gap-2 mb-4 px-4 py-3 glass border border-red-200 rounded-2xl">
-                  <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
-                  <p className="text-sm text-red-600 flex-1">{error}</p>
-                  <button onClick={() => setError('')}><X className="w-4 h-4 text-gray-400" /></button>
+                <div className="mt-4 flex items-center gap-2 px-4 py-3 rounded-2xl border"
+                  style={{ background: 'rgba(239,68,68,0.06)', borderColor: 'rgba(239,68,68,0.2)' }}>
+                  <AlertCircle className="w-4 h-4 text-red-400 flex-shrink-0" />
+                  <p className="text-sm text-red-400 flex-1">{error}</p>
                 </div>
               )}
 
-              <div className="space-y-3">
-                {MODELS.map((m, idx) => {
-                  const Icon = m.icon;
-                  const active = model === m.id;
-                  return (
-                    <button key={m.id} onClick={() => setModel(m.id)}
-                      className={`w-full flex items-center gap-4 p-5 rounded-2xl border-2 transition-all ${
-                        active ? 'glass shadow-lg border-pink-400/60 shadow-pink-200/30' : 'glass border-white/40 hover:border-pink-200/60'
-                      }`}>
-                      <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${m.color} flex items-center justify-center shadow-md flex-shrink-0`}>
-                        <Icon className="w-6 h-6 text-white" />
-                      </div>
-                      <div className="flex-1 text-left">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <p className="font-black text-gray-800">{m.name}</p>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full border font-bold ${m.badgeColor}`}>{m.badge}</span>
-                          {idx === 0 && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gradient-to-r from-pink-500 to-purple-600 text-white font-bold">⭐ Top</span>}
-                        </div>
-                        <p className="text-xs font-semibold text-gray-600">{m.tagline}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">{m.desc}</p>
-                      </div>
-                      <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                        <span className="text-sm font-black text-gray-700">{m.cost} 🪙</span>
-                        <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-all ${
-                          active ? 'bg-gradient-to-br from-pink-500 to-purple-600 border-pink-400' : 'border-gray-300'
-                        }`}>
-                          {active && <Check className="w-3 h-3 text-white" />}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-
               <div className="flex items-center justify-between mt-4 px-1">
-                <p className="text-xs text-gray-400">
-                  Balance: <span className="font-bold text-gray-700">{coins === null ? '—' : coins.toLocaleString()} coins</span>
+                <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  Balance: <span className="font-bold" style={{ color: 'var(--text-primary)' }}>{coins === null ? '—' : coins.toLocaleString()} coins</span>
                 </p>
-                <button onClick={() => setShowPlans(true)} className="text-xs font-bold text-pink-500 hover:underline">
-                  Get more coins →
-                </button>
               </div>
 
-              <button
-                onClick={handleGenerate}
-                disabled={coins !== null && coins < selectedModel.cost}
-                className="w-full mt-6 flex items-center justify-center gap-3 py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-black text-base shadow-xl shadow-pink-400/30 hover:from-pink-600 hover:to-purple-700 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-              >
+              <button onClick={handleGenerate}
+                disabled={coins !== null && coins < MODEL.cost}
+                className="w-full mt-6 flex items-center justify-center gap-3 py-4 text-white rounded-2xl font-black text-base shadow-xl transition-all disabled:opacity-40"
+                style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
                 <Sparkles className="w-5 h-5" />
-                Build with {selectedModel.name} · {selectedModel.cost} 🪙
+                Build with {MODEL.name} · {MODEL.cost} 🪙
               </button>
             </div>
           </div>
         )}
 
-        {/* ── STEP 3: Generating + Results ── */}
+        {/* STEP 3: Results */}
         {step === 3 && (
           <div className="flex-1 flex flex-col overflow-hidden animate-fade-in">
 
-            {/* Generating state */}
+            {/* Generating */}
             {isGenerating && (
               <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-                {/* Live code stream — clean monochrome terminal */}
-                <div className="flex-1 flex flex-col overflow-hidden" style={{ background: '#0a0a0a' }}>
-                  {/* Terminal chrome */}
-                  <div className="flex items-center gap-3 px-5 py-3 flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
+                <div className="flex-1 flex flex-col overflow-hidden" style={{ background: terminalBg }}>
+                  <div className="flex items-center gap-3 px-5 py-3 flex-shrink-0" style={{ background: isDark ? '#111' : '#1e1e2e', borderBottom: `1px solid ${isDark ? '#222' : '#2d2d3e'}` }}>
                     <div className="flex gap-1.5">
                       <div className="w-3 h-3 rounded-full" style={{ background: '#ff5f57' }} />
                       <div className="w-3 h-3 rounded-full" style={{ background: '#febc2e' }} />
                       <div className="w-3 h-3 rounded-full" style={{ background: '#28c840' }} />
                     </div>
-                    <span className="text-xs font-mono ml-2" style={{ color: '#666' }}>dani — writing your code</span>
+                    <span className="text-xs font-mono ml-2" style={{ color: '#666' }}>dani — generating your site</span>
                     <div className="ml-auto flex items-center gap-2">
                       <span className="w-1.5 h-1.5 rounded-full bg-pink-400 animate-pulse inline-block" />
                       <span className="text-xs font-mono" style={{ color: '#444' }}>{selectedPreset.label}</span>
                     </div>
                   </div>
-                  <pre
-                    ref={genStreamRef}
+                  <pre ref={genStreamRef}
                     className="flex-1 overflow-y-auto p-6 text-sm font-mono leading-6 whitespace-pre-wrap break-words"
-                    style={{ color: '#e2e8f0', scrollbarWidth: 'none' }}
-                  >
+                    style={{ color: '#e2e8f0', scrollbarWidth: 'none' }}>
                     {streamDisplayed}
-                    {!streamDone && <span className="inline-block w-2 h-4 bg-white ml-0.5 align-text-bottom animate-pulse" style={{ opacity: 0.8 }} />}
+                    {!streamDone && <span className="inline-block w-2 h-4 bg-white ml-0.5 align-text-bottom animate-pulse opacity-80" />}
                   </pre>
                 </div>
-
-                {/* Status sidebar */}
-                <div className="lg:w-72 flex-shrink-0 border-t lg:border-t-0 lg:border-l border-white/30 glass flex flex-col items-center justify-center gap-6 p-8">
+                <div className="lg:w-72 flex-shrink-0 border-t lg:border-t-0 lg:border-l flex flex-col items-center justify-center gap-6 p-8"
+                  style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
                   <div className="relative">
-                    <div className="w-24 h-24 rounded-full bg-gradient-to-br from-pink-400 via-purple-500 to-blue-500 animate-pulse shadow-2xl shadow-purple-400/40" />
-                    <div className="absolute inset-0 rounded-full bg-gradient-to-br from-pink-500 to-purple-600 animate-ping opacity-20" />
-                    <div className="absolute inset-4 rounded-full glass flex items-center justify-center">
+                    <div className="w-24 h-24 rounded-full animate-pulse shadow-2xl"
+                      style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7,#3b82f6)' }} />
+                    <div className="absolute inset-4 rounded-full flex items-center justify-center"
+                      style={{ background: 'var(--glass-bg)', backdropFilter: 'blur(10px)' }}>
                       <Loader2 className="w-8 h-8 text-white animate-spin" />
                     </div>
                   </div>
                   <div className="text-center">
-                    <p className="font-black text-gray-800 text-lg">Building... ✨</p>
-                    <p className="text-sm font-semibold bg-gradient-to-r from-pink-500 to-purple-600 bg-clip-text text-transparent mt-1">
-                      {selectedModel.name}
-                    </p>
-                    <p className="text-xs text-gray-400 mt-2">{selectedPreset.label}</p>
-                    <p className="text-xs text-gray-400">{selectedModel.cost} coins · ~15 seconds</p>
+                    <p className="font-black text-lg" style={{ color: 'var(--text-primary)' }}>Building... ✨</p>
+                    <p className="text-sm font-semibold shimmer-text mt-1">{MODEL.name}</p>
+                    <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>{selectedPreset.label}</p>
+                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{MODEL.cost} coins · ~30–60s</p>
                   </div>
                 </div>
               </div>
             )}
 
-            {/* Results state */}
+            {/* Results */}
             {!isGenerating && hasFiles && (
               <div className="flex-1 flex flex-col overflow-hidden">
-                {/* Toolbar */}
-                <div className="flex items-center gap-2 px-4 py-2 glass border-b border-white/30 flex-shrink-0">
-                  <button onClick={() => setStep(0)}
-                    className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-pink-500 transition-colors font-medium mr-1">
+                <div className="flex items-center gap-2 px-4 py-2 border-b flex-shrink-0"
+                  style={{ background: isDark ? 'rgba(12,12,24,0.9)' : 'rgba(255,255,255,0.9)', borderColor: 'var(--border-subtle)' }}>
+                  <button onClick={startNew} className="flex items-center gap-1.5 text-xs font-medium mr-1 hover:text-pink-400 transition-colors"
+                    style={{ color: 'var(--text-muted)' }}>
                     <Plus className="w-3.5 h-3.5" /> New
                   </button>
-
-                  {/* File tabs */}
                   <div className="flex items-center gap-1 flex-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
                     {generatedFiles.map((f, i) => (
                       <button key={i} onClick={() => setSelectedFileIdx(i)}
-                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono whitespace-nowrap transition-all flex-shrink-0 ${
-                          selectedFileIdx === i
-                            ? 'bg-gradient-to-r from-pink-500/15 to-purple-500/15 text-pink-700 border border-pink-300/40'
-                            : 'text-gray-500 hover:text-gray-700 hover:glass hover:border hover:border-white/40'
-                        }`}>
-                        <FileCode className="w-3 h-3" />
-                        {f.path}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-mono whitespace-nowrap transition-all flex-shrink-0"
+                        style={selectedFileIdx === i
+                          ? { background: 'rgba(236,72,153,0.15)', color: '#ec4899', border: '1px solid rgba(236,72,153,0.3)' }
+                          : { color: 'var(--text-muted)' }}>
+                        <FileCode className="w-3 h-3" />{f.path}
                       </button>
                     ))}
                   </div>
-
-                  {/* View mode */}
-                  <div className="flex items-center bg-white/60 rounded-lg p-0.5 gap-0.5 flex-shrink-0 border border-white/40">
+                  <div className="flex items-center rounded-lg p-0.5 gap-0.5 flex-shrink-0 border"
+                    style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
                     {(['code', 'split', 'preview'] as const).map(v => (
                       <button key={v} onClick={() => setViewMode(v)}
-                        className={`px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1 ${
-                          viewMode === v ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                        }`}>
-                        {v === 'code' && <Code2 className="w-3 h-3" />}
-                        {v === 'preview' && <Eye className="w-3 h-3" />}
-                        {v === 'code' ? 'Code' : v === 'split' ? 'Split' : 'Preview'}
+                        className="px-2.5 py-1 rounded-md text-xs font-semibold transition-all flex items-center gap-1"
+                        style={viewMode === v
+                          ? { background: 'linear-gradient(135deg,#ec4899,#a855f7)', color: 'white' }
+                          : { color: 'var(--text-muted)' }}>
+                        {v === 'code' ? <><Code2 className="w-3 h-3" />Code</> : v === 'preview' ? <><Eye className="w-3 h-3" />Preview</> : 'Split'}
                       </button>
                     ))}
                   </div>
-
                   {currentFile && <CopyBtn text={currentContent} />}
                 </div>
 
-                {/* Editor + Preview */}
                 <div className="flex-1 flex overflow-hidden">
                   {(viewMode === 'code' || viewMode === 'split') && (
-                    <div
-                      className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2 border-r border-white/20' : 'flex-1'}`}
-                      style={{ background: '#0a0a0a' }}
-                    >
-                      {/* Editor chrome */}
-                      <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0" style={{ background: '#111', borderBottom: '1px solid #222' }}>
+                    <div className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2 border-r' : 'flex-1'}`}
+                      style={{ background: terminalBg, borderColor: 'var(--border-normal)' }}>
+                      <div className="flex items-center gap-2 px-4 py-2 flex-shrink-0" style={{ background: isDark ? '#111' : '#1e1e2e', borderBottom: `1px solid ${isDark ? '#222' : '#2d2d3e'}` }}>
                         <div className="flex gap-1.5">
                           <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ff5f57' }} />
                           <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#febc2e' }} />
@@ -1079,56 +783,51 @@ export default function WebsiteTab() {
                         </div>
                         <span className="text-xs font-mono ml-1" style={{ color: '#555' }}>{currentFile?.path}</span>
                       </div>
-                      <textarea
-                        value={currentContent}
+                      <textarea value={currentContent}
                         onChange={e => { if (currentFile) setEditedContents(prev => ({ ...prev, [currentFile.path]: e.target.value })); }}
                         className="flex-1 bg-transparent font-mono text-xs sm:text-[13px] p-5 resize-none focus:outline-none leading-relaxed w-full"
                         style={{ color: '#e2e8f0', caretColor: '#fff' }}
-                        spellCheck={false}
-                      />
+                        spellCheck={false} />
                     </div>
                   )}
-
                   {(viewMode === 'preview' || viewMode === 'split') && (
                     <div className={`flex flex-col overflow-hidden ${viewMode === 'split' ? 'w-1/2' : 'flex-1'}`}>
-                      <div className="flex items-center gap-2 px-3 py-2 glass border-b border-white/30 flex-shrink-0">
+                      <div className="flex items-center gap-2 px-3 py-2 border-b flex-shrink-0"
+                        style={{ background: isDark ? 'rgba(12,12,24,0.9)' : 'white', borderColor: 'var(--border-subtle)' }}>
                         <div className="flex gap-1">
                           <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#ff5f57' }} />
                           <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#febc2e' }} />
                           <div className="w-2.5 h-2.5 rounded-full" style={{ background: '#28c840' }} />
                         </div>
-                        <div className="flex-1 flex items-center gap-2 bg-white/60 rounded-lg px-3 py-1 border border-white/40">
-                          <Globe className="w-3 h-3 text-gray-400" />
-                          <span className="text-[11px] font-mono text-gray-500 truncate">{projectName.replace(/-/g, ' ')}</span>
+                        <div className="flex-1 flex items-center gap-2 rounded-lg px-3 py-1 border"
+                          style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
+                          <Globe className="w-3 h-3" style={{ color: 'var(--text-muted)' }} />
+                          <span className="text-[11px] font-mono truncate" style={{ color: 'var(--text-muted)' }}>{projectName.replace(/-/g, ' ')}</span>
                         </div>
-                        <button
-                          onClick={() => { const w = window.open('', '_blank'); if (w) { w.document.write(previewHTML); w.document.close(); } }}
-                          className="p-1.5 glass rounded-lg hover:bg-white/60 transition-all border border-white/30"
-                          title="Open in new tab">
+                        <button onClick={() => { const w = window.open('', '_blank'); if (w) { w.document.write(previewHTML); w.document.close(); } }}
+                          className="p-1.5 rounded-lg border transition-all" title="Open in new tab"
+                          style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
                           <Globe className="w-3.5 h-3.5 text-pink-500" />
                         </button>
                       </div>
-                      <iframe
-                        srcDoc={previewHTML}
-                        className="flex-1 w-full border-0 bg-white"
-                        title="Preview"
-                        sandbox="allow-scripts allow-forms allow-same-origin"
-                      />
+                      <iframe srcDoc={previewHTML} className="flex-1 w-full border-0 bg-white" title="Preview"
+                        sandbox="allow-scripts allow-forms allow-same-origin" />
                     </div>
                   )}
                 </div>
               </div>
             )}
 
-            {/* If error on step 3 (no files) */}
             {!isGenerating && !hasFiles && (
               <div className="flex-1 flex items-center justify-center p-8">
-                <div className="glass rounded-3xl border border-white/40 p-10 text-center max-w-sm">
+                <div className="rounded-3xl border p-10 text-center max-w-sm"
+                  style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
                   <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
-                  <h3 className="font-bold text-gray-800 mb-2">Something went wrong</h3>
-                  <p className="text-sm text-gray-500 mb-6">{error || 'Generation failed. Please try again.'}</p>
-                  <button onClick={() => { setStep(2); setError(''); }}
-                    className="px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-2xl font-bold shadow-lg">
+                  <h3 className="font-bold mb-2" style={{ color: 'var(--text-primary)' }}>Something went wrong</h3>
+                  <p className="text-sm mb-6" style={{ color: 'var(--text-muted)' }}>{error || 'Generation failed. Please try again.'}</p>
+                  <button onClick={() => { setStep(1); setError(''); }}
+                    className="px-6 py-3 text-white rounded-2xl font-bold shadow-lg"
+                    style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
                     Try Again
                   </button>
                 </div>

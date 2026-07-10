@@ -1,9 +1,9 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ArrowLeft, Download, Trash2, Globe, Calendar, Cpu, Crown, Zap,
   FolderOpen, Plus, Search, X, ExternalLink, Clock, Code2,
-  ChevronRight, Sparkles, Filter
+  ChevronRight, Sparkles, Filter, Edit3, Link, Check
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import daniLogo from '@/assets/dani-logo.png';
@@ -152,12 +152,26 @@ function ProjectCard({
   onOpen,
   onDelete,
   onDownload,
+  onRename,
+  onPublicLink,
 }: {
   project: Project;
   onOpen: (p: Project) => void;
   onDelete: (id: string) => void;
   onDownload: (p: Project) => void;
+  onRename: (id: string, newName: string) => void;
+  onPublicLink: (p: Project) => void;
 }) {
+  const [editingName, setEditingName] = useState(false);
+  const [nameVal, setNameVal] = useState(project.name);
+  const nameInputRef = useRef<HTMLInputElement>(null);
+
+  const commitRename = () => {
+    const trimmed = nameVal.trim();
+    if (trimmed && trimmed !== project.name) onRename(project.id, trimmed);
+    else setNameVal(project.name);
+    setEditingName(false);
+  };
   const tech = TECH_CONFIG[project.techPreset] || TECH_CONFIG['vanilla'];
   const mdl = MODEL_CONFIG[project.model] || MODEL_CONFIG['dani-5.0'];
   const ModelIcon = mdl.Icon;
@@ -201,9 +215,26 @@ function ProjectCard({
 
       {/* Card body */}
       <div className="p-4 flex-1 flex flex-col">
-        <h3 className="font-black text-gray-800 text-sm truncate leading-tight mb-1">
-          {project.name.replace(/-/g, ' ')}
-        </h3>
+        {editingName ? (
+          <input
+            ref={nameInputRef}
+            value={nameVal}
+            onChange={e => setNameVal(e.target.value)}
+            onBlur={commitRename}
+            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') { setNameVal(project.name); setEditingName(false); } }}
+            className="text-sm font-black text-gray-800 bg-white/80 border border-pink-300 rounded-lg px-2 py-0.5 outline-none w-full mb-1 focus:border-pink-500"
+            autoFocus
+          />
+        ) : (
+          <h3
+            className="font-black text-gray-800 text-sm truncate leading-tight mb-1 cursor-text group/name flex items-center gap-1"
+            onClick={() => { setEditingName(true); setNameVal(project.name); setTimeout(() => nameInputRef.current?.select(), 50); }}
+            title="Click to rename"
+          >
+            {project.name.replace(/-/g, ' ')}
+            <Edit3 className="w-3 h-3 text-gray-300 group-hover/name:text-pink-400 transition-colors opacity-0 group-hover/name:opacity-100 flex-shrink-0" />
+          </h3>
+        )}
         <p className="text-xs text-gray-500 line-clamp-2 leading-relaxed flex-1">
           {project.description}
         </p>
@@ -221,12 +252,23 @@ function ProjectCard({
           </div>
         </div>
 
-        {/* File count */}
+        {/* File count + actions */}
         <div className="flex items-center gap-1 mt-2 text-[10px] text-gray-400">
           <Code2 className="w-3 h-3" />
           {project.files.length} file{project.files.length !== 1 ? 's' : ''}
           <span className="mx-1">·</span>
           {project.files.reduce((sum, f) => sum + f.content.length, 0).toLocaleString()} chars
+        </div>
+        {/* Quick action row */}
+        <div className="flex items-center gap-1.5 mt-3 pt-2 border-t border-white/30">
+          <button onClick={() => onPublicLink(project)}
+            className="flex items-center gap-1 px-2 py-1 glass border border-white/40 text-gray-500 hover:text-pink-500 hover:border-pink-300/50 rounded-lg text-[10px] font-semibold transition-all">
+            <Link className="w-3 h-3" /> Preview Link
+          </button>
+          <button onClick={() => onDownload(project)}
+            className="flex items-center gap-1 px-2 py-1 glass border border-white/40 text-gray-500 hover:text-purple-500 hover:border-purple-300/50 rounded-lg text-[10px] font-semibold transition-all">
+            <Download className="w-3 h-3" /> ZIP
+          </button>
         </div>
       </div>
     </div>
@@ -243,6 +285,7 @@ export default function ProjectsPage() {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [publicLinkCopied, setPublicLinkCopied] = useState<string | null>(null);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -269,6 +312,53 @@ export default function ProjectsPage() {
       return updated;
     });
     setDeleteConfirm(null);
+  }, []);
+
+  const handleRename = useCallback((id: string, newName: string) => {
+    setProjects(prev => {
+      const updated = prev.map(p => p.id === id ? { ...p, name: newName } : p);
+      localStorage.setItem('dani-vibe-projects', JSON.stringify(updated));
+      return updated;
+    });
+  }, []);
+
+  const handlePublicLink = useCallback((project: Project) => {
+    // Build a preview URL using base64-encoded HTML
+    try {
+      const isReact = project.techPreset === 'react-ts' || project.techPreset === 'react-js';
+      let previewHTML = '';
+      if (isReact) {
+        const appFile = project.files.find(f => f.path.includes('App.'));
+        const cssFile = project.files.find(f => f.path.endsWith('.css'));
+        const appContent = appFile?.content || '';
+        const cssContent = cssFile?.content || '';
+        let jsxCode = appContent
+          .replace(/^import\s+type\s+.*?;?\s*$/gm, '')
+          .replace(/^import\s+.*?from\s+['"](react|\.[^'"]+)['"]\s*;?\s*$/gm, '')
+          .replace(/^export\s+default\s+/gm, '')
+          .replace(/:\s*(string|number|boolean|void|null|undefined|React\.FC|any|unknown|never)\b(\s*\[\])?/g, '')
+          .replace(/!(?=[.\[(])/g, '');
+        previewHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>*{box-sizing:border-box}body{margin:0}${cssContent}</style></head><body><div id="root"></div><script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script><script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script type="text/babel" data-presets="react">const{useState,useEffect,useCallback,useRef}=React;${jsxCode}try{ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App))}catch(e){document.body.innerHTML='<p style="color:red;padding:20px">'+e.message+'</p>'}</script></body></html>`;
+      } else {
+        const html = project.files.find(f => f.path === 'index.html');
+        const css = project.files.find(f => f.path.endsWith('.css'));
+        const js = project.files.find(f => f.path.endsWith('.js') && !f.path.endsWith('.jsx'));
+        if (!html) return;
+        let h = html.content;
+        if (css) h = h.replace('</head>', `<style>${css.content}</style></head>`);
+        if (js) h = h.replace('</body>', `<script>${js.content}</script></body>`);
+        previewHTML = h;
+      }
+      const b64 = btoa(unescape(encodeURIComponent(previewHTML)));
+      const url = `data:text/html;base64,${b64}`;
+      // Copy a shareable data URL to clipboard
+      navigator.clipboard.writeText(url).then(() => {
+        setPublicLinkCopied(project.id);
+        setTimeout(() => setPublicLinkCopied(null), 3000);
+      });
+    } catch (e) {
+      console.error('Public link error:', e);
+    }
   }, []);
 
   const handleDownload = useCallback((project: Project) => {
@@ -481,18 +571,25 @@ export default function ProjectsPage() {
                 {viewMode === 'grid' ? (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                     {group.items.map(project => (
-                      <ProjectCard
-                        key={project.id}
+                      <div key={project.id} className="relative">
+                        {publicLinkCopied === project.id && (
+                          <div className="absolute -top-8 left-1/2 -translate-x-1/2 z-10 flex items-center gap-1.5 px-3 py-1.5 bg-green-500 text-white rounded-full text-xs font-bold shadow-lg whitespace-nowrap animate-fade-in">
+                            <Check className="w-3 h-3" /> Preview link copied!
+                          </div>
+                        )}
+                        <ProjectCard
                         project={project}
                         onOpen={handleOpen}
                         onDelete={(id) => setDeleteConfirm(id)}
                         onDownload={handleDownload}
-                      />
+                        onRename={handleRename}
+                        onPublicLink={handlePublicLink}
+                      /></div>
                     ))}
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {group.items.map(project => {
+                    {group.items.map((project) => {  // list view
                       const tech = TECH_CONFIG[project.techPreset] || TECH_CONFIG['vanilla'];
                       const mdl = MODEL_CONFIG[project.model] || MODEL_CONFIG['dani-5.0'];
                       const ModelIcon = mdl.Icon;
@@ -527,6 +624,10 @@ export default function ProjectsPage() {
                             <button onClick={() => handleOpen(project)}
                               className="flex items-center gap-1.5 px-3 py-1.5 bg-gradient-to-r from-pink-500 to-purple-600 text-white rounded-xl text-xs font-bold shadow-md hover:from-pink-600 hover:to-purple-700 transition-all">
                               <ExternalLink className="w-3.5 h-3.5" /> Open
+                            </button>
+                            <button onClick={() => handlePublicLink(project)}
+                              className="p-2 glass border border-white/40 text-gray-500 hover:text-blue-500 rounded-xl transition-all" title="Copy preview link">
+                              <Link className="w-4 h-4" />
                             </button>
                             <button onClick={() => handleDownload(project)}
                               className="p-2 glass border border-white/40 text-gray-500 hover:text-pink-500 rounded-xl transition-all" title="Download ZIP">

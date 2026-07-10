@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sparkles, MessageCircle, ImagePlus, Mic, FileText, X } from 'lucide-react';
+import { Sparkles, MessageCircle, ImagePlus, Mic, FileText, X, Music, Code2, Globe } from 'lucide-react';
 import heroImage from '@/assets/hero-bg.jpg';
 import daniLogo from '@/assets/dani-logo.png';
+import FeatureCube from '@/components/features/FeatureCube';
 
 export default function HomePage() {
   const navigate = useNavigate();
@@ -20,21 +21,12 @@ export default function HomePage() {
   };
 
   const features = [
-    {
-      icon: MessageCircle,
-      title: 'Chat with DANI',
-      description: 'Have natural conversations about anything - get help, advice, or just friendly chat'
-    },
-    {
-      icon: ImagePlus,
-      title: 'Generate Images',
-      description: 'Create stunning images from your descriptions - art, photos, illustrations, and more'
-    },
-    {
-      icon: Mic,
-      title: 'Voice Conversation',
-      description: 'Talk to DANI naturally with voice input and hear responses spoken back to you'
-    }
+    { icon: MessageCircle, title: 'Smart Chat', description: 'Natural conversations with emotional intelligence, web search, and memory', color: 'from-pink-500 to-rose-500' },
+    { icon: ImagePlus, title: 'AI Image Studio', description: 'Ultra-realistic images and AI photo editing — generate, inpaint, style swap', color: 'from-purple-500 to-violet-600' },
+    { icon: Mic, title: 'Voice AI', description: 'Speak naturally and hear DANI respond with a warm female voice', color: 'from-green-500 to-emerald-500' },
+    { icon: Music, title: 'Music Studio', description: 'Generate original AI music tracks from any text description', color: 'from-blue-500 to-cyan-500' },
+    { icon: Code2, title: 'Vibe Code', description: 'Build complete websites and apps with DANI AQ in seconds', color: 'from-orange-500 to-amber-500' },
+    { icon: Globe, title: 'Video AI', description: 'Text-to-video generation — describe any scene and DANI renders it', color: 'from-red-500 to-pink-500' },
   ];
 
   return (
@@ -55,28 +47,35 @@ export default function HomePage() {
       </header>
 
       {/* Hero Section */}
-      <section className="relative overflow-hidden py-20 md:py-32">
-        <div className="absolute inset-0 opacity-20">
+      <section className="relative overflow-hidden py-16 md:py-28">
+        <div className="absolute inset-0 opacity-10">
           <img src={heroImage} alt="" className="w-full h-full object-cover" />
         </div>
+        {/* Futuristic grid overlay */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(168,85,247,1) 1px, transparent 1px), linear-gradient(90deg, rgba(168,85,247,1) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
         <div className="container mx-auto px-4 relative z-10">
-          <div className="max-w-4xl mx-auto text-center">
+          <div className="max-w-5xl mx-auto">
+            {/* Two-column layout: text + cube */}
+            <div className="flex flex-col lg:flex-row items-center gap-10 lg:gap-16">
+            <div className="flex-1 text-center lg:text-left">
             <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/60 backdrop-blur-sm rounded-full mb-6 border border-pink-200">
               <Sparkles className="w-4 h-4 text-pink-500" />
               <span className="text-sm font-medium text-gray-700">Your Sweet & Supportive AI Companion</span>
             </div>
             
-            <h1 className="text-5xl md:text-7xl font-bold mb-6 bg-gradient-to-r from-pink-600 via-purple-600 to-blue-600 bg-clip-text text-transparent">
-              Meet DANI
-            </h1>
-            
-            <p className="text-xl md:text-2xl text-gray-700 mb-8 leading-relaxed">
-              Your multi-purpose AI helper for chat, creativity, and productivity. 
-              I'm here to support you with conversation, image generation, and voice interaction.
-            </p>
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-5 border text-xs font-bold uppercase tracking-widest"
+                style={{ background: 'rgba(236,72,153,0.08)', borderColor: 'rgba(236,72,153,0.25)', color: '#db2777' }}>
+                <Sparkles className="w-3.5 h-3.5" /> Gemini Vision · ElevenLabs Voice · DANI AQ
+              </div>
+              <h1 className="text-5xl md:text-7xl font-black mb-4 leading-none tracking-tight">
+                <span className="shimmer-text">Meet DANI</span>
+              </h1>
+              <p className="text-lg md:text-xl text-gray-600 mb-6 leading-relaxed">
+                Your multi-purpose AI — smart chat, image generation, voice, music creation, and full website building in one place.
+              </p>
             
             {/* Terms of Service Checkbox */}
-            <div className="flex items-center justify-center gap-3 mb-6">
+            <div className="flex items-center justify-center lg:justify-start gap-3 mb-6">
               <input
                 type="checkbox"
                 id="terms-hero"
@@ -105,7 +104,7 @@ export default function HomePage() {
               </div>
             )}
             
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+            <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
               <button
                 onClick={handleGetStarted}
                 className="px-8 py-4 bg-gradient-to-r from-pink-500 to-purple-600 text-white text-lg rounded-full font-semibold hover:from-pink-600 hover:to-purple-700 transition-all shadow-xl hover:shadow-2xl transform hover:scale-105"
@@ -120,7 +119,15 @@ export default function HomePage() {
               >
                 Learn More
               </button>
+              </div>
+            </div>{/* end text col */}
+
+            {/* Feature Cube */}
+            <div className="flex-shrink-0 flex flex-col items-center gap-2 animate-float">
+              <FeatureCube />
+              <p className="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">6 AI Powers</p>
             </div>
+            </div>{/* end two-col */}
           </div>
         </div>
       </section>
@@ -137,17 +144,17 @@ export default function HomePage() {
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-5 max-w-5xl mx-auto">
             {features.map((feature, index) => (
-              <div
-                key={index}
-                className="glass p-8 rounded-3xl hover:shadow-2xl transition-all transform hover:scale-105 border-2 border-white/30"
+              <div key={index}
+                className="p-6 rounded-2xl hover:shadow-xl transition-all duration-300 group cursor-default border" style={{ background: 'var(--glass-card, rgba(255,255,255,0.8))', borderColor: 'var(--border-subtle, rgba(255,255,255,0.2))' }}
+                style={{ '--hover-color': '1' } as React.CSSProperties}
               >
-                <div className="w-16 h-16 bg-gradient-to-br from-pink-500 to-purple-600 rounded-2xl flex items-center justify-center mb-6">
-                  <feature.icon className="w-8 h-8 text-white" />
+                <div className={`w-12 h-12 bg-gradient-to-br ${feature.color} rounded-xl flex items-center justify-center mb-4 shadow-lg group-hover:scale-110 transition-transform duration-200`}>
+                  <feature.icon className="w-6 h-6 text-white" />
                 </div>
-                <h3 className="text-2xl font-bold mb-3 text-gray-800">{feature.title}</h3>
-                <p className="text-gray-600 leading-relaxed">{feature.description}</p>
+                <h3 className="text-lg font-black mb-1.5 text-gray-800">{feature.title}</h3>
+                <p className="text-gray-500 text-sm leading-relaxed">{feature.description}</p>
               </div>
             ))}
           </div>
@@ -208,7 +215,7 @@ export default function HomePage() {
             
             <div className="prose prose-sm max-w-none text-gray-700 space-y-4">
               <p className="text-sm">
-                <strong>Last Updated:</strong> March 19, 2026
+                <strong>Last Updated:</strong> June 9, 2026
               </p>
               
               <h3 className="text-lg font-bold text-gray-800 mt-6">1. Acceptance of Terms</h3>
@@ -218,15 +225,16 @@ export default function HomePage() {
               
               <h3 className="text-lg font-bold text-gray-800 mt-6">2. Description of Service</h3>
               <p>
-                DANI is an AI assistant providing chat, image generation, voice interaction, and website creation features. We strive to provide accurate and helpful responses, but results may vary.
+                DANI (Digital Artificial Neural Intelligence) is an AI assistant providing: natural language chat, image and video generation, voice interaction, AI music creation, website builder (Vibe Code), and character roleplay. Features may be updated at any time.
               </p>
               
               <h3 className="text-lg font-bold text-gray-800 mt-6">3. User Responsibilities</h3>
               <ul className="list-disc pl-6 space-y-2">
                 <li>You must be at least 13 years old to use DANI</li>
-                <li>Do not use DANI for illegal or harmful purposes</li>
+                <li>Do not use DANI for illegal, harmful, or deceptive purposes</li>
                 <li>Do not attempt to abuse, hack, or disrupt our service</li>
                 <li>Respect intellectual property rights in generated content</li>
+                <li>Guest mode offers limited access — create an account to save your work</li>
               </ul>
               
               <h3 className="text-lg font-bold text-gray-800 mt-6">4. Content and Privacy</h3>

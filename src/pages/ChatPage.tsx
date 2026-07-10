@@ -1,156 +1,367 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Home, LogOut, User, Settings, Sparkles, BarChart2, FolderOpen } from 'lucide-react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import {
+  Home, LogOut, Settings, Sparkles, BarChart2, FolderOpen,
+  Music, Ghost, MessageCircle, ImagePlus, Mic, Users,
+  Menu, X, ChevronRight, PanelLeft, Film, Moon, Sun
+} from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import daniLogo from '@/assets/dani-logo.png';
 import ChatTab from '@/components/features/ChatTab';
 import ImageTab from '@/components/features/ImageTab';
 import VoiceTab from '@/components/features/VoiceTab';
 import WebsiteTab from '@/components/features/WebsiteTab';
+import MusicTab from '@/components/features/MusicTab';
+import VideoTab from '@/components/features/VideoTab';
+import { useTheme } from '@/App';
 
 const ADMIN_EMAIL = 'damibotzinc@gmail.com';
+type TabId = 'chat' | 'image' | 'video' | 'voice' | 'music' | 'website';
+
+const TABS = [
+  { id: 'chat' as TabId, label: 'Chat', Icon: MessageCircle, desc: 'AI Assistant', color: 'text-pink-400' },
+  { id: 'image' as TabId, label: 'Image / Edit', Icon: ImagePlus, desc: 'Generate & Edit', color: 'text-purple-400' },
+  { id: 'video' as TabId, label: 'Video', Icon: Film, desc: 'AI Video Gen', color: 'text-blue-400' },
+  { id: 'voice' as TabId, label: 'Voice', Icon: Mic, desc: 'Speak to DANI', color: 'text-green-400' },
+  { id: 'music' as TabId, label: 'Music', Icon: Music, desc: 'AI Composer', color: 'text-cyan-400' },
+  { id: 'website' as TabId, label: 'Vibe Code', Icon: Sparkles, desc: 'Build Apps', color: 'text-orange-400' },
+];
 
 export default function ChatPage() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'chat' | 'image' | 'voice' | 'website'>('chat');
-
-  // Handle navigation state (e.g. from ProjectsPage opening Vibe Code)
-  useEffect(() => {
-    const state = window.history.state?.usr;
-    if (state?.openVibeCode) setActiveTab('website');
-  }, []);
+  const location = useLocation();
+  const { theme, toggleTheme } = useTheme();
+  const [activeTab, setActiveTab] = useState<TabId>('chat');
   const [username, setUsername] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
-  const [responseStyle] = useState<string>(
-    () => localStorage.getItem('dani-style') || 'educational'
-  );
+  const [isGuest, setIsGuest] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [responseStyle] = useState<string>(() => localStorage.getItem('dani-style') || 'educational');
 
   useEffect(() => {
-    // Check existing session first (handles page refresh)
+    const state = location.state as { openVibeCode?: boolean } | null;
+    if (state?.openVibeCode) setActiveTab('website');
+  }, [location.state]);
+
+  useEffect(() => {
+    const guestMode = localStorage.getItem('dani-guest-mode') === 'true';
+    if (guestMode) {
+      setIsGuest(true);
+      setUsername('Guest');
+      setAuthChecked(true);
+      return;
+    }
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         setUsername(session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'User');
         setUserEmail(session.user.email || null);
+        setAvatarUrl(session.user.user_metadata?.avatar_url || null);
+        setIsGuest(false);
       } else {
-        // No session — redirect to auth
         navigate('/auth', { replace: true });
       }
       setAuthChecked(true);
     });
 
-    // Listen for auth state changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_OUT' || !session) {
-        navigate('/auth', { replace: true });
+        const gm = localStorage.getItem('dani-guest-mode') === 'true';
+        if (!gm) navigate('/auth', { replace: true });
       } else if (session?.user) {
         setUsername(session.user.user_metadata?.username || session.user.email?.split('@')[0] || 'User');
         setUserEmail(session.user.email || null);
+        setAvatarUrl(session.user.user_metadata?.avatar_url || null);
+        setIsGuest(false);
       }
     });
-
     return () => subscription.unsubscribe();
   }, [navigate]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate('/', { replace: true });
+    if (isGuest) { localStorage.removeItem('dani-guest-mode'); navigate('/', { replace: true }); }
+    else { await supabase.auth.signOut(); navigate('/', { replace: true }); }
   };
 
   useEffect(() => {
-    const handleSwitchTab = (e: CustomEvent) => {
-      setActiveTab(e.detail);
-    };
+    const handleSwitchTab = (e: CustomEvent) => setActiveTab(e.detail);
     window.addEventListener('switch-tab', handleSwitchTab as EventListener);
     return () => window.removeEventListener('switch-tab', handleSwitchTab as EventListener);
   }, []);
 
-  // Track tab switch for analytics
-  const handleTabChange = async (tab: 'chat' | 'image' | 'voice' | 'website') => {
+  const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
-    // Fire-and-forget analytics event
-    const featureMap = { chat: 'chat', image: 'image', voice: 'voice', website: 'website' };
-    supabase.from('analytics_events').insert({ feature: featureMap[tab] }).then(() => {});
+    setMobileSidebarOpen(false);
+    if (!isGuest) supabase.from('analytics_events').insert({ feature: tab }).then(() => {});
   };
 
-  // Don't render until auth is verified (prevents flash)
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex items-center justify-center">
+      <div className="min-h-screen surface-0 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-3 border-pink-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-400 text-sm">Loading DANI...</p>
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center animate-pulse"
+            style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
+            <Sparkles className="w-5 h-5 text-white" />
+          </div>
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>Loading DANI...</p>
         </div>
       </div>
     );
   }
 
+  const activeTabData = TABS.find(t => t.id === activeTab)!;
+  const isDark = theme === 'dark';
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-pink-50 via-purple-50 to-blue-50 flex flex-col">
-      {/* Header */}
-      <header className="glass border-b border-white/20 sticky top-0 z-50">
-        <div className="container mx-auto px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <img src={daniLogo} alt="DANI" className="h-8 w-auto" />
-          </div>
+    <div className="min-h-screen flex surface-0 overflow-hidden" style={{ height: '100dvh' }}>
 
-          {/* Tab Navigation */}
-          <div className="flex gap-2 bg-white/60 backdrop-blur-sm p-1.5 rounded-full border border-pink-200">
-            {(['chat', 'image', 'voice', 'website'] as const).map(tab => (
-              <button key={tab} onClick={() => handleTabChange(tab)}
-                className={`px-4 sm:px-6 py-2 rounded-full font-medium transition-all text-sm ${
-                  activeTab === tab
-                    ? 'bg-gradient-to-r from-pink-500 to-purple-600 text-white shadow-md'
-                    : 'text-gray-600 hover:text-gray-800'
-                }`}>
-                {tab === 'website' ? <><Sparkles className="w-4 h-4 inline mr-1" />Vibe Code</> : tab.charAt(0).toUpperCase() + tab.slice(1)}
+      {/* ── Mobile Overlay ── */}
+      {mobileSidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm lg:hidden"
+          onClick={() => setMobileSidebarOpen(false)} />
+      )}
+
+      {/* ── LEFT SIDEBAR ── */}
+      <aside className={`
+        fixed lg:relative top-0 left-0 h-full z-50 lg:z-auto
+        flex flex-col transition-all duration-300 ease-in-out
+        border-r
+        ${mobileSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0 lg:w-[${sidebarCollapsed ? "68px" : "220px"}]'}
+        ${sidebarCollapsed ? 'lg:w-[68px]' : 'w-[220px]'}
+      `} style={{ background: isDark ? '#0c0c18' : '#ffffff', borderColor: 'var(--border-subtle)' }}>
+
+        {/* Logo */}
+        <div className={`flex items-center gap-3 px-4 py-5 border-b flex-shrink-0 ${sidebarCollapsed ? 'justify-center' : ''}`}
+          style={{ borderColor: 'var(--border-subtle)' }}>
+          <img src={daniLogo} alt="DANI" className="h-7 w-auto flex-shrink-0" />
+          {!sidebarCollapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="font-black text-sm tracking-tight truncate" style={{ color: 'var(--text-primary)' }}>DANI</p>
+              <p className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>v2.5 Pro Suite</p>
+            </div>
+          )}
+          <button onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+            className="hidden lg:flex p-1.5 rounded-lg transition-all flex-shrink-0"
+            style={{ color: 'var(--text-muted)' }}>
+            <PanelLeft className="w-4 h-4" />
+          </button>
+          <button onClick={() => setMobileSidebarOpen(false)}
+            className="lg:hidden p-1.5 rounded-lg transition-all"
+            style={{ color: 'var(--text-secondary)' }}>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Nav */}
+        <nav className="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
+          {TABS.map(tab => {
+            const active = activeTab === tab.id;
+            return (
+              <button key={tab.id} onClick={() => handleTabChange(tab.id)}
+                title={sidebarCollapsed ? tab.label : undefined}
+                className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${
+                  active ? 'nav-item-active' : ''
+                } ${sidebarCollapsed ? 'justify-center' : ''}`}
+                style={!active ? { color: 'var(--text-muted)' } : {}}>
+                <tab.Icon className={`w-4 h-4 flex-shrink-0 transition-colors ${active ? tab.color : ''}`} />
+                {!sidebarCollapsed && (
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-xs font-semibold truncate" style={{ color: active ? 'var(--text-primary)' : undefined }}>{tab.label}</p>
+                    <p className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>{tab.desc}</p>
+                  </div>
+                )}
+                {active && !sidebarCollapsed && (
+                  <div className="w-1.5 h-1.5 rounded-full bg-pink-400 flex-shrink-0" />
+                )}
               </button>
-            ))}
-          </div>
+            );
+          })}
 
-          <div className="flex items-center gap-2">
-            {username && (
-              <div className="hidden sm:flex items-center gap-2 px-3 py-2 glass rounded-full border border-white/30">
-                <User className="w-4 h-4 text-pink-500" />
-                <span className="text-sm font-medium text-gray-700">{username}</span>
+          <div className="h-px my-2 mx-1" style={{ background: 'var(--border-subtle)' }} />
+
+          <button onClick={() => navigate('/characters')}
+            title={sidebarCollapsed ? 'Characters' : undefined}
+            className={`w-full flex items-center gap-3 px-3 py-3 rounded-xl transition-all group ${sidebarCollapsed ? 'justify-center' : ''}`}
+            style={{ color: 'var(--text-muted)' }}>
+            <Users className="w-4 h-4 flex-shrink-0 group-hover:text-purple-400" />
+            {!sidebarCollapsed && (
+              <div className="flex-1 text-left min-w-0">
+                <p className="text-xs font-semibold truncate">Characters</p>
+                <p className="text-[10px] truncate" style={{ color: 'var(--text-muted)' }}>Studio & Roleplay</p>
               </div>
             )}
-            {userEmail === ADMIN_EMAIL && (
-              <button onClick={() => navigate('/analytics')}
-                className="p-2.5 glass rounded-full hover:bg-purple-50 transition-all border border-white/30"
-                title="Analytics">
-                <BarChart2 className="w-5 h-5 text-purple-600" />
+          </button>
+        </nav>
+
+        {/* Bottom */}
+        <div className={`flex-shrink-0 border-t p-3 space-y-1 ${sidebarCollapsed ? 'items-center flex flex-col' : ''}`}
+          style={{ borderColor: 'var(--border-subtle)' }}>
+
+          {isGuest && !sidebarCollapsed && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl mb-1"
+              style={{ background: 'rgba(234,179,8,0.1)', border: '1px solid rgba(234,179,8,0.2)' }}>
+              <Ghost className="w-3.5 h-3.5 text-yellow-500 flex-shrink-0" />
+              <p className="text-[11px] text-yellow-500 flex-1 truncate">Guest mode</p>
+              <button onClick={() => navigate('/auth')} className="text-[10px] text-pink-400 font-bold hover:underline">
+                Sign up
               </button>
-            )}
-            <button onClick={() => navigate('/projects')}
-              className="p-2.5 glass rounded-full hover:bg-white/80 transition-all border border-white/30"
-              title="My Projects">
-              <FolderOpen className="w-5 h-5 text-gray-600" />
-            </button>
+            </div>
+          )}
+
+          {/* User profile row */}
+          {!isGuest && !sidebarCollapsed && username && (
             <button onClick={() => navigate('/profile')}
-              className="p-2.5 glass rounded-full hover:bg-white/80 transition-all border border-white/30"
-              title="Profile & Settings">
-              <Settings className="w-5 h-5 text-gray-600" />
+              className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all hover:opacity-80"
+              style={{ background: 'var(--glass-bg)', border: '1px solid var(--border-subtle)' }}>
+              {/* Avatar */}
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={username}
+                  className="w-7 h-7 rounded-lg object-cover flex-shrink-0 border border-white/20" />
+              ) : (
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold flex-shrink-0 text-white"
+                  style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
+                  {username.slice(0, 2).toUpperCase()}
+                </div>
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{username}</p>
+                {userEmail === ADMIN_EMAIL && <p className="text-[10px] text-pink-400">Admin</p>}
+              </div>
             </button>
-            <button onClick={() => navigate('/')}
-              className="p-2.5 glass rounded-full hover:bg-white/80 transition-all border border-white/30">
-              <Home className="w-5 h-5 text-gray-600" />
+          )}
+
+          {/* Collapsed avatar */}
+          {!isGuest && sidebarCollapsed && (
+            <button onClick={() => navigate('/profile')} title="Profile"
+              className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0 mx-auto">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={username || ''} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
+                  {username?.slice(0, 2).toUpperCase() || 'ME'}
+                </div>
+              )}
             </button>
-            <button onClick={handleLogout}
-              className="p-2.5 glass rounded-full hover:bg-red-50 transition-all border border-white/30"
-              title="Log out">
-              <LogOut className="w-5 h-5 text-gray-500 hover:text-red-500" />
+          )}
+
+          <div className={`flex gap-1 ${sidebarCollapsed ? 'flex-col items-center' : ''}`}>
+            {/* Theme toggle */}
+            <button onClick={toggleTheme} title={isDark ? 'Light mode' : 'Dark mode'}
+              className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg transition-all text-[11px] font-medium"
+              style={{ color: 'var(--text-muted)' }}>
+              {isDark ? <Sun className="w-3.5 h-3.5 flex-shrink-0" /> : <Moon className="w-3.5 h-3.5 flex-shrink-0" />}
+              {!sidebarCollapsed && (isDark ? 'Light' : 'Dark')}
+            </button>
+            {!isGuest && (
+              <>
+                {userEmail === ADMIN_EMAIL && (
+                  <button onClick={() => navigate('/analytics')} title="Analytics"
+                    className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg transition-all text-[11px] font-medium"
+                    style={{ color: 'var(--text-muted)' }}>
+                    <BarChart2 className="w-3.5 h-3.5 flex-shrink-0" />
+                    {!sidebarCollapsed && 'Stats'}
+                  </button>
+                )}
+                <button onClick={() => navigate('/projects')} title="Projects"
+                  className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg transition-all text-[11px] font-medium"
+                  style={{ color: 'var(--text-muted)' }}>
+                  <FolderOpen className="w-3.5 h-3.5 flex-shrink-0" />
+                  {!sidebarCollapsed && 'Projects'}
+                </button>
+                <button onClick={() => navigate('/profile')} title="Settings"
+                  className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg transition-all text-[11px] font-medium"
+                  style={{ color: 'var(--text-muted)' }}>
+                  <Settings className="w-3.5 h-3.5 flex-shrink-0" />
+                  {!sidebarCollapsed && 'Settings'}
+                </button>
+              </>
+            )}
+            <button onClick={() => navigate('/')} title="Home"
+              className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg transition-all text-[11px] font-medium"
+              style={{ color: 'var(--text-muted)' }}>
+              <Home className="w-3.5 h-3.5 flex-shrink-0" />
+              {!sidebarCollapsed && 'Home'}
+            </button>
+            <button onClick={handleLogout} title={isGuest ? 'Exit' : 'Logout'}
+              className="flex-1 flex items-center justify-center gap-1.5 p-2 rounded-lg transition-all text-[11px] font-medium"
+              style={{ color: 'var(--text-muted)' }}>
+              <LogOut className="w-3.5 h-3.5 flex-shrink-0" />
+              {!sidebarCollapsed && 'Logout'}
             </button>
           </div>
         </div>
-      </header>
+      </aside>
 
-      {/* Main Content */}
-      <div className="flex-1 flex flex-col">
-        {activeTab === 'chat' && <ChatTab responseStyle={responseStyle} />}
-        {activeTab === 'image' && <ImageTab />}
-        {activeTab === 'voice' && <VoiceTab />}
-        {activeTab === 'website' && <WebsiteTab />}
+      {/* ── MAIN AREA ── */}
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+
+        {/* Mobile header */}
+        <header className="lg:hidden flex-shrink-0 flex items-center gap-3 px-4 py-3 border-b"
+          style={{ background: isDark ? '#0c0c18' : '#ffffff', borderColor: 'var(--border-subtle)' }}>
+          <button onClick={() => setMobileSidebarOpen(true)}
+            className="p-2 rounded-xl border transition-all"
+            style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-secondary)' }}>
+            <Menu className="w-5 h-5" />
+          </button>
+          <img src={daniLogo} alt="DANI" className="h-7 w-auto" />
+          <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-xl border"
+            style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)' }}>
+            <activeTabData.Icon className={`w-4 h-4 ${activeTabData.color} flex-shrink-0`} />
+            <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{activeTabData.label}</span>
+          </div>
+          {/* Theme toggle mobile */}
+          <button onClick={toggleTheme} className="p-2 rounded-xl border transition-all"
+            style={{ background: 'var(--glass-bg)', borderColor: 'var(--border-normal)', color: 'var(--text-secondary)' }}>
+            {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+          </button>
+          {isGuest ? (
+            <button onClick={() => navigate('/auth')}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold text-white flex-shrink-0"
+              style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
+              Sign Up
+            </button>
+          ) : (
+            <button onClick={() => navigate('/profile')}
+              className="w-9 h-9 rounded-xl overflow-hidden flex-shrink-0 border"
+              style={{ borderColor: 'var(--border-normal)' }}>
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={username || ''} className="w-full h-full object-cover" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xs font-bold text-white"
+                  style={{ background: 'linear-gradient(135deg,#ec4899,#a855f7)' }}>
+                  {username?.slice(0, 2).toUpperCase() || 'ME'}
+                </div>
+              )}
+            </button>
+          )}
+        </header>
+
+        {/* Guest banner */}
+        {isGuest && (
+          <div className="flex-shrink-0 flex items-center justify-center gap-3 px-4 py-2 border-b"
+            style={{ background: 'rgba(234,179,8,0.05)', borderColor: 'rgba(234,179,8,0.1)' }}>
+            <Ghost className="w-3.5 h-3.5 text-yellow-500/70" />
+            <p className="text-xs text-yellow-600">Guest mode — conversations not saved.</p>
+            <button onClick={() => navigate('/auth')}
+              className="text-xs font-bold text-pink-400 hover:text-pink-300 flex items-center gap-1">
+              Create Free Account <ChevronRight className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Tab content */}
+        <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+          {activeTab === 'chat' && <ChatTab responseStyle={responseStyle} isGuest={isGuest} username={username} />}
+          {activeTab === 'image' && <ImageTab />}
+          {activeTab === 'voice' && <VoiceTab />}
+          {activeTab === 'video' && <VideoTab />}
+          {activeTab === 'music' && <MusicTab />}
+          {activeTab === 'website' && <WebsiteTab />}
+        </div>
       </div>
     </div>
   );
