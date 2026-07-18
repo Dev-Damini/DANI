@@ -319,18 +319,10 @@ export default function ChatTab({
     greetingRef.current = GREETINGS[idx](username || 'there');
   }
 
-  const welcomeMessage: ChatMessage = {
-    id: 'welcome',
-    role: 'assistant',
-    content: greetingRef.current,
-    timestamp: new Date(),
-  };
-
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => setIsAuthenticated(!!session?.user));
     if (!initialized.current) {
       initialized.current = true;
-      setLocalMessages([welcomeMessage]);
     }
   }, []);
 
@@ -366,7 +358,7 @@ export default function ChatTab({
     // Refresh greeting
     const idx = Math.floor(Math.random() * GREETINGS.length);
     greetingRef.current = GREETINGS[idx](username || 'there');
-    setLocalMessages([{ ...welcomeMessage, content: greetingRef.current, id: Date.now().toString() }]);
+    setLocalMessages([]);
     setCurrentEmotion('neutral');
     inputRef.current?.focus();
   };
@@ -380,7 +372,12 @@ export default function ChatTab({
     e.stopPropagation();
     if (!confirm('Delete this conversation?')) return;
     await deleteConversation(id);
-    if (currentConversationId === id) { setCurrentConversationId(null); setLocalMessages([welcomeMessage]); }
+    if (currentConversationId === id) {
+      const idx = Math.floor(Math.random() * GREETINGS.length);
+      greetingRef.current = GREETINGS[idx](username || 'there');
+      setCurrentConversationId(null);
+      setLocalMessages([]);
+    }
   };
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -649,7 +646,7 @@ export default function ChatTab({
   );
 
   return (
-    <div className="flex-1 flex overflow-hidden relative surface-0">
+    <div className="flex-1 flex min-h-0 overflow-hidden relative surface-0">
 
       {/* Side Nav Overlay */}
       {navOpen && (
@@ -733,7 +730,7 @@ export default function ChatTab({
       </aside>
 
       {/* Main Chat */}
-      <div className="flex-1 flex flex-col min-w-0 max-w-4xl mx-auto w-full px-4 py-4">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 max-w-4xl mx-auto w-full px-4 py-4">
 
         {/* Top bar */}
         <div className="flex items-center gap-3 mb-4">
@@ -754,7 +751,16 @@ export default function ChatTab({
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto space-y-4 pb-2 scrollbar-thin">
+        {messages.length === 0 && !isTyping ? (
+          <div className="flex-1 min-h-0 flex flex-col items-center justify-center text-center px-6">
+            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-pink-400 to-purple-500 flex items-center justify-center mb-5 shadow-lg">
+              <Sparkles className="w-7 h-7 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold shimmer-text mb-2">{greetingRef.current}</h2>
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Send a message to start chatting with DANI</p>
+          </div>
+        ) : (
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 pb-2 scrollbar-thin">
           {messages.map(message => (
             <div key={message.id} className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}>
               {message.role === 'user' ? (
@@ -833,6 +839,7 @@ export default function ChatTab({
           )}
           <div ref={messagesEndRef} />
         </div>
+        )}
 
         {/* Emotion */}
         {currentEmotion !== 'neutral' && (
