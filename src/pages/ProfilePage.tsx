@@ -321,7 +321,7 @@ export default function ProfilePage() {
           <h2 className="text-lg font-bold mb-2 flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
             <Mic className="w-5 h-5 text-green-500" /> DANI's Voice
           </h2>
-          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>Female voice powered by ElevenLabs</p>
+          <p className="text-sm mb-4" style={{ color: 'var(--text-muted)' }}>DANI's natural female voice</p>
           <div className="flex items-center gap-4 p-4 rounded-2xl border-2 border-pink-400/30"
             style={{ background: 'rgba(236,72,153,0.05)' }}>
             <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0"
@@ -329,7 +329,7 @@ export default function ProfilePage() {
               <Mic className="w-6 h-6 text-white" />
             </div>
             <div className="flex-1">
-              <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Rachel — ElevenLabs</p>
+              <p className="font-bold text-sm" style={{ color: 'var(--text-primary)' }}>Rachel — DANI Voice</p>
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Natural, warm female voice · Turbo quality</p>
             </div>
             <CheckCircle className="w-5 h-5 text-pink-500 flex-shrink-0" />
