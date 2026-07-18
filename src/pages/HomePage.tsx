@@ -65,7 +65,7 @@ export default function HomePage() {
             
               <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full mb-5 border text-xs font-bold uppercase tracking-widest"
                 style={{ background: 'rgba(236,72,153,0.08)', borderColor: 'rgba(236,72,153,0.25)', color: '#db2777' }}>
-                <Sparkles className="w-3.5 h-3.5" /> Gemini Vision · ElevenLabs Voice · DANI AQ
+                <Sparkles className="w-3.5 h-3.5" /> DANI Vision · DANI Voice · DANI AQ
               </div>
               <h1 className="text-5xl md:text-7xl font-black mb-4 leading-none tracking-tight">
                 <span className="shimmer-text">Meet DANI</span>
